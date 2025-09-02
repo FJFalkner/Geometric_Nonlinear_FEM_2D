@@ -228,7 +228,7 @@ def B2D_SR(ue,EA,EI,GAq,l):
         # strains
         dudx  = dN1dx*u1 + dN4dx*u2
         dwdx  = dN2dx*w1 + dN3dx*phi1 + dN5dx*w2 + dN6dx*phi2
-        dwdxx = -(dN2dxx*w1 + dN3dxx*phi1 + dN5dxx*w2 + dN6dxx*phi2)
+        dwdxx = (dN2dxx*w1 + dN3dxx*phi1 + dN5dxx*w2 + dN6dxx*phi2)
         E0 = dudx + 0.5*(dudx**2 + dwdx**2)
         Kb = dwdxx
 
@@ -239,7 +239,7 @@ def B2D_SR(ue,EA,EI,GAq,l):
  
         # B-matrix
         B = np.array([[(1+dudx)*dN1dx,  dwdx*dN2dx,   dwdx*dN3dx, (1+dudx)*dN4dx, dwdx*dN5dx, dwdx*dN6dx],
-                      [             0,     -dN2dxx,      -dN3dxx,              0,    -dN5dxx,    -dN6dxx]])
+                      [             0,      dN2dxx,       dN3dxx,              0,     dN5dxx,     dN6dxx]])
         
         # internal force vector
         fine += B.T @ CSF.T * w
@@ -533,7 +533,7 @@ def example(n):
     # shallow arch - point load
     if n==8:
         R = 40
-        n = 30
+        n = 70
         phi0 = 20/180*np.pi
         phi  = np.linspace(-phi0,phi0,n+1) 
         N = np.zeros((n+1,2))
@@ -555,7 +555,7 @@ def example(n):
         EI = 210000E6*b*h**3/12
         GAq = 5/6*80760E6*b*h
 
-        F  = np.array([[n/2+1, 2, -160E3]])
+        F  = np.array([[n/2+1, 2, -100E3]])
         
         monitor_DOF = [n/2+1, 2]
 
@@ -688,7 +688,7 @@ N, E, BC, F, EA, EI, GAq, monitor_DOF = example(8)
 
 # *** ANALYSE TYPE ***  
 # arc-length method (Risk's method)
-arc_Length = False
+arc_Length = True
 intial_Load_Factor = 0.5
 # buckling
 lin_Buckling = False
@@ -698,7 +698,7 @@ scal_BM = 0.0005
 # number of load increments
 num_Inc = 20
 # element type
-e_Type = 'Beam2D_SR'
+e_Type = 'Beam2D_LR'
 # stop incremental loading
 inc_loading = False
 
