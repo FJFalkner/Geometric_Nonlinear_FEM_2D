@@ -555,7 +555,7 @@ def example(n):
         EI = 210000E6*b*h**3/12
         GAq = 5/6*80760E6*b*h
 
-        F  = np.array([[n/2+1, 2, -140E3]])
+        F  = np.array([[n/2+1, 2, -160E3]])
         
         monitor_DOF = [n/2+1, 2]
 
@@ -684,7 +684,7 @@ def plot_monitorDOF(plot_monitor):
 # 6 ... Shallow arch
 # 7 ... Shallow arch - radial pressure
 # 8 ... Shallow arch - point load
-N, E, BC, F, EA, EI, GAq, monitor_DOF = example(2)
+N, E, BC, F, EA, EI, GAq, monitor_DOF = example(8)
 
 # *** ANALYSE TYPE ***  
 # arc-length method (Risk's method)
@@ -698,7 +698,7 @@ scal_BM = 0.0005
 # number of load increments
 num_Inc = 20
 # element type
-e_Type = 'Beam2D_LR'
+e_Type = 'Beam2D_SR'
 # stop incremental loading
 inc_loading = False
 
