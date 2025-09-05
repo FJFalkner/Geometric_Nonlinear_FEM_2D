@@ -1,1 +1,2 @@
-# Geometric Nonlinear Finite Element Method (FEM) in 2D
+# Finite element program for geometric nonlinear analysis of plane beams
+- 
