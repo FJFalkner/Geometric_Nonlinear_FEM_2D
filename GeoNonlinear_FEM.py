@@ -1,3 +1,5 @@
+from typing import Self
+
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.linalg import ldl
@@ -323,6 +325,35 @@ def assemble(N, E, e_Type, u, EA, EI, GAq):
 
     return fin, K, Kg
 
+class SectionProperty:
+
+    def __init__(self):
+        self.A: float | None = None
+        self.I: float | None = None
+        self.Aq: float | None = None
+
+    @classmethod
+    def rectangular(cls, width, height):
+        inst = cls()
+        inst.A = width * height
+        inst.I = width * height**3 / 12
+        inst.Aq = 5 / 6 * inst.A
+        return inst
+
+class MaterialProperty:
+
+    def __init__(self):
+        self.E: float | None = None
+        self.nu: float | None = None
+        self.G: float | None = None
+
+    @classmethod
+    def isotropic(cls, E: float, nu: float) -> Self:
+        inst = cls()
+        inst.E = E
+        inst.nu = nu
+        inst.G = E / (2 * (1 + nu))
+        return inst
 
 def example(n):
     # Blattfeder
@@ -335,17 +366,18 @@ def example(n):
         N[:, 0] = np.linspace(0, L * np.cos(beta), n + 1)
         N[:, 1] = np.linspace(0, L * np.sin(beta), n + 1)
 
-        E = np.zeros((n, 2), dtype="int")
+        E = np.zeros((n, 2), dtype=int)
         E[:, 0] = np.linspace(2, n + 1, n)
         E[:, 1] = np.linspace(1, n, n)
 
         BC = np.array([[1, 1], [1, 2], [1, 3]])
 
-        b = 100
-        h = 150
-        EA = 210000 * b * h
-        EI = 210000 * b * h**3 / 12
-        GAq = 5 / 6 * 80760 * b * h
+        rect = SectionProperty.rectangular(width = 100, height = 150)
+        steel = MaterialProperty.isotropic(E = 210000, nu = 0.3)
+
+        EA = steel.E * rect.A
+        EI = steel.E * rect.I
+        GAq = steel.G * rect.Aq
 
         F = np.array([[n + 1, 3, 2 * EI * np.pi / L]])
 
@@ -361,7 +393,7 @@ def example(n):
         N[:, 0] = R * np.cos(phi)
         N[:, 1] = R * np.sin(phi)
 
-        E = np.zeros((n, 2), dtype="int")
+        E = np.zeros((n, 2), dtype=int)
         E[:, 0] = np.linspace(2, n + 1, n)
         E[:, 1] = np.linspace(1, n, n)
 
@@ -369,7 +401,7 @@ def example(n):
                     [1, 2],
                     [1, 3],
                     [n+1, 1],
-                    [n+1, 2]], dtype="int")
+                    [n+1, 2]], dtype=int)
 
         F = np.array([[n / 2 + 1, 2, -10]])
 
@@ -683,11 +715,11 @@ def plot_monitorDOF(plot_monitor):
 # 6 ... Shallow arch
 # 7 ... Shallow arch - radial pressure
 # 8 ... Shallow arch - point load
-N, E, BC, F, EA, EI, GAq, monitor_DOF = example(8)
+N, E, BC, F, EA, EI, GAq, monitor_DOF = example(1)
 
 # *** ANALYSE TYPE ***
 # arc-length method (Risk's method)
-arc_Length = True
+arc_Length = False
 intial_Load_Factor = 0.5
 # buckling
 lin_Buckling = False
