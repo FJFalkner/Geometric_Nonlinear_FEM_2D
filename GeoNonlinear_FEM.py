@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 from scipy.linalg import ldl
 from scipy.linalg import eig
 
+#test5
+
 def B2D_LR(ue,EA,EI,GAq,l):
     '''
     2D beam element for large rotations 
@@ -213,20 +215,20 @@ def B2D_SR(ue,EA,EI,GAq,l):
         # first
         dN1dx =  1/l
         dN2dx =  6*x*(l - x)/l**3
-        dN3dx =  (-2*l*x + 3*x**2)/l**2
+        dN3dx =  -(-2*l*x + 3*x**2)/l**2
         dN4dx = -1/l
         dN5dx = -6*x*(l - x)/l**3
-        dN6dx =  (l - x)*(l - 3*x)/l**2
+        dN6dx =  -(l - x)*(l - 3*x)/l**2
         # second
         dN2dxx = (6*l - 12*x)/l**3
-        dN3dxx = (-2*l + 6*x)/l**2
+        dN3dxx = -(-2*l + 6*x)/l**2
         dN5dxx = (12*x - 6*l)/l**3
-        dN6dxx = (-4*l + 6*x)/l**2
+        dN6dxx = -(-4*l + 6*x)/l**2
 
         # strains
         dudx  = dN1dx*u1 + dN4dx*u2
         dwdx  = dN2dx*w1 + dN3dx*phi1 + dN5dx*w2 + dN6dx*phi2
-        dwdxx = -(dN2dxx*w1 + dN3dxx*phi1 + dN5dxx*w2 + dN6dxx*phi2)
+        dwdxx = (dN2dxx*w1 + dN3dxx*phi1 + dN5dxx*w2 + dN6dxx*phi2)
         E0 = dudx + 0.5*(dudx**2 + dwdx**2)
         Kb = dwdxx
 
@@ -237,7 +239,7 @@ def B2D_SR(ue,EA,EI,GAq,l):
  
         # B-matrix
         B = np.array([[(1+dudx)*dN1dx,  dwdx*dN2dx,   dwdx*dN3dx, (1+dudx)*dN4dx, dwdx*dN5dx, dwdx*dN6dx],
-                      [             0,     -dN2dxx,      -dN3dxx,              0,    -dN5dxx,    -dN6dxx]])
+                      [             0,      dN2dxx,       dN3dxx,              0,     dN5dxx,     dN6dxx]])
         
         # internal force vector
         fine += B.T @ CSF.T * w
@@ -254,6 +256,75 @@ def B2D_SR(ue,EA,EI,GAq,l):
                            [          0, dN6dx*dN2dx, dN6dx*dN3dx,           0, dN6dx*dN5dx, dN6dx*dN6dx]])*w
     
     return fine.flatten(), kme+kge, kge
+
+def assemble(N,E,e_Type,u,EA,EI,GAq):
+
+    # number of DOF
+    numDOF = N.shape[0]*3
+    # number of elements
+    numE   = E.shape[0]
+
+    # intialize arrays
+    fin = np.zeros(numDOF)
+    K   = np.zeros((numDOF,numDOF))
+    Kg  = np.zeros((numDOF,numDOF))
+
+    # direct stiffness method
+    for i in range(0,numE):
+        # node indices
+        dof_e = np.concatenate((3*(E[i,0]-1) + np.array([0,1,2]), 3*(E[i,1]-1) + np.array([0,1,2]))).astype(int)
+
+        # length
+        ind = E[i,:] - 1
+        dx = N[ind[0],0] - N[ind[1],0]
+        dy = N[ind[0],1] - N[ind[1],1]
+        l  = np.sqrt(dx**2 + dy**2)
+
+        # TRANSFORMATION MATRIX
+        alpha = np.arctan2(dy,dx)
+        T = np.eye(3)
+        T[0,0], T[0,1] =  np.cos(alpha), np.sin(alpha)
+        T[1,0], T[1,1] = -np.sin(alpha), np.cos(alpha)
+
+        # transform element nodal displacements
+        ue = u[dof_e]
+        ue[0:3] = T @ ue[0:3]
+        ue[3:6] = T @ ue[3:6]
+
+        # element arrays
+        if e_Type == 'Beam2D_LR':
+            fine, ke, kg = B2D_LR(ue,EA,EI,GAq,l)
+        else:
+            fine, ke, kg = B2D_SR(ue,EA,EI,GAq,l)
+            
+        # TRANSFORMATION:
+        # internal force vector            
+        fine[0:3] = T.T @ fine[0:3]
+        fine[3:6] = T.T @ fine[3:6]
+
+        # element stiffness matrix
+        ke[np.ix_(range(0,3),range(0,3))] = T.T @ ke[np.ix_(range(0,3),range(0,3))] @ T
+        ke[np.ix_(range(0,3),range(3,6))] = T.T @ ke[np.ix_(range(0,3),range(3,6))] @ T
+        ke[np.ix_(range(3,6),range(0,3))] = T.T @ ke[np.ix_(range(3,6),range(0,3))] @ T
+        ke[np.ix_(range(3,6),range(3,6))] = T.T @ ke[np.ix_(range(3,6),range(3,6))] @ T
+
+        # element geometric stiffness matrix
+        kg[np.ix_(range(0,3),range(0,3))] = T.T @ kg[np.ix_(range(0,3),range(0,3))] @ T
+        kg[np.ix_(range(0,3),range(3,6))] = T.T @ kg[np.ix_(range(0,3),range(3,6))] @ T
+        kg[np.ix_(range(3,6),range(0,3))] = T.T @ kg[np.ix_(range(3,6),range(0,3))] @ T
+        kg[np.ix_(range(3,6),range(3,6))] = T.T @ kg[np.ix_(range(3,6),range(3,6))] @ T
+
+        # ASSEMBLING
+        # internal force vector
+        fin[dof_e] += fine
+
+        # global stiffness matrix
+        K[np.ix_(dof_e,dof_e)] += ke
+
+        # global geometric stiffness matrix
+        Kg[np.ix_(dof_e,dof_e)] += kg
+
+    return fin, K, Kg
 
 def example(n):
 
@@ -462,7 +533,7 @@ def example(n):
     # shallow arch - point load
     if n==8:
         R = 40
-        n = 30
+        n = 70
         phi0 = 20/180*np.pi
         phi  = np.linspace(-phi0,phi0,n+1) 
         N = np.zeros((n+1,2))
@@ -484,7 +555,7 @@ def example(n):
         EI = 210000E6*b*h**3/12
         GAq = 5/6*80760E6*b*h
 
-        F  = np.array([[n/2+1, 2, -140E3]])
+        F  = np.array([[n/2+1, 2, -100E3]])
         
         monitor_DOF = [n/2+1, 2]
 
@@ -571,11 +642,37 @@ def plot_Deformation(N,u):
 
     # --- Final layout ---
     plt.axis("equal")
-    plt.xlabel("X [mm]")
-    plt.ylabel("Y [mm]")
+    plt.xlabel("X")
+    plt.ylabel("Y")
     plt.title("Undeformed vs Deformed Shape")
     plt.legend()
     plt.tight_layout()
+    plt.show()
+
+def plot_monitorDOF(plot_monitor):
+    # *** MONITOR WINDOW ***
+    # Or just use original order
+    x = plot_monitor[:, 1]
+    y = plot_monitor[:, 0]
+
+    # Plot blue line through all points
+    plt.plot(x, y, color='blue', linewidth=2)
+
+    # Masks for coloring dots
+    green_mask = (plot_monitor[:, 2] == 0)
+    red_mask = (plot_monitor[:, 2] > 0)
+
+    # Plot dots with colors
+    plt.plot(plot_monitor[green_mask, 1], plot_monitor[green_mask, 0],
+            'o', markerfacecolor='green', markeredgecolor='black', label='stable')
+
+    plt.plot(plot_monitor[red_mask, 1], plot_monitor[red_mask, 0],
+            'o', markerfacecolor='red', markeredgecolor='black', label='unstable')
+
+    plt.grid(True)
+    plt.ylabel('load factor')
+    plt.xlabel('monitor DOF')
+    plt.legend()
     plt.show()
 
 # examples:
@@ -587,40 +684,35 @@ def plot_Deformation(N,u):
 # 6 ... Shallow arch
 # 7 ... Shallow arch - radial pressure
 # 8 ... Shallow arch - point load
-N, E, BC, F, EA, EI, GAq, monitor_DOF = example(3)
+N, E, BC, F, EA, EI, GAq, monitor_DOF = example(8)
 
 # *** ANALYSE TYPE ***  
 # arc-length method (Risk's method)
-arc_Length = False
+arc_Length = True
+intial_Load_Factor = 0.5
 # buckling
 lin_Buckling = False
 # imperfection
 imp = False
+scal_BM = 0.0005
+# number of load increments
+num_Inc = 20
+# element type
+e_Type = 'Beam2D_LR'
+# stop incremental loading
+inc_loading = False
 
 # apply geometric imperfection
 if imp:
     buckling_modes = np.load('bucklingModes.npy')
-    scal_BM = 0.001
     N[:,0] += scal_BM*buckling_modes[0::3,0]
     N[:,1] += scal_BM*buckling_modes[1::3,0]
-
-# number of load increments
-num_Inc = 10
-# element type
-e_Type = 'Beam2D_LR'
 
 # *** CHARCTERISTIC VALUES AND PRELOCATE MEMORY ***
 # number of nodes
 numN = N.shape[0]
-# number of elements
-numE = E.shape[0]
 # number of DOF
 numDOF = 3*numN
-# global stiffness matrix
-K = np.zeros((numDOF,numDOF), dtype="float")
-Kg = np.zeros((numDOF,numDOF), dtype="float")
-# global internal force vector
-fin = np.zeros(numDOF, dtype="float")
 # nodal displacements
 u = np.zeros(numDOF)
 # out-of-balance vector
@@ -640,7 +732,6 @@ load_factor = 0.
 
 if arc_Length:
     # arc-length method
-    arc_L_est = 0.25
     F = np.zeros((numDOF,2))
     F[:,1] = fex
     DL_fac = 0
@@ -649,95 +740,40 @@ else:
     # load control
     fac = np.arange(1/num_Inc,1+1/num_Inc,1/num_Inc)
 
-# start incremental loading
+# START INCREMENTAL LOADING
 for j in range(0,num_Inc):
 
+    # print increment
     print('***')
-    print(f"Increment:  {j:4.0f}")
+    print(f"Increment:  {j:2.0f}")
 
-    # start Newton iteration
+    # START NEWTON ITERATION
     for k in range(0,20):
-        K[:] = 0
-        fin[:] = 0
-
-        if lin_Buckling:
-            Kg[:] = 0
 
         if arc_Length == False:
             load_factor = fac[j]
 
-        # direct stiffness method
-        for i in range(0,numE):
-            # node indices
-            dof_e = np.concatenate((3*(E[i,0]-1) + np.array([0,1,2]), 3*(E[i,1]-1) + np.array([0,1,2]))).astype(int)
+        # DIRECT STIFFNESS METHOD
+        fin, K, Kg = assemble(N,E,e_Type,u,EA,EI,GAq)
 
-            # length
-            ind = E[i,:] - 1
-            dx = N[ind[0],0] - N[ind[1],0]
-            dy = N[ind[0],1] - N[ind[1],1]
-            l  = np.sqrt(dx**2 + dy**2)
-            # transformation
-            alpha = np.arctan2(dy,dx)
-            T = np.eye(3)
-            T[0,0], T[0,1] =  np.cos(alpha), np.sin(alpha)
-            T[1,0], T[1,1] = -np.sin(alpha), np.cos(alpha)
-
-            # element nodal displacements
-            ue = u[dof_e]
-            ue[0:3] = T @ ue[0:3]
-            ue[3:6] = T @ ue[3:6]
-
-            # element arrays
-            if e_Type == 'Beam2D_LR':
-                fine, ke, kg = B2D_LR(ue,EA,EI,GAq,l)
-            else:
-                fine, ke, kg = B2D_SR(ue,EA,EI,GAq,l)
-            
-            # transformation            
-            fine[0:3] = T.T @ fine[0:3]
-            fine[3:6] = T.T @ fine[3:6]
-          
-            ke[np.ix_(range(0,3),range(0,3))] = T.T @ ke[np.ix_(range(0,3),range(0,3))] @ T
-            ke[np.ix_(range(0,3),range(3,6))] = T.T @ ke[np.ix_(range(0,3),range(3,6))] @ T
-            ke[np.ix_(range(3,6),range(0,3))] = T.T @ ke[np.ix_(range(3,6),range(0,3))] @ T
-            ke[np.ix_(range(3,6),range(3,6))] = T.T @ ke[np.ix_(range(3,6),range(3,6))] @ T
-
-            if lin_Buckling:
-                kg[np.ix_(range(0,3),range(0,3))] = T.T @ kg[np.ix_(range(0,3),range(0,3))] @ T
-                kg[np.ix_(range(0,3),range(3,6))] = T.T @ kg[np.ix_(range(0,3),range(3,6))] @ T
-                kg[np.ix_(range(3,6),range(0,3))] = T.T @ kg[np.ix_(range(3,6),range(0,3))] @ T
-                kg[np.ix_(range(3,6),range(3,6))] = T.T @ kg[np.ix_(range(3,6),range(3,6))] @ T
-
-            # assembling
-            fin[dof_e] += fine
-            K[np.ix_(dof_e,dof_e)] += ke
-
-            if lin_Buckling:
-                Kg[np.ix_(dof_e,dof_e)] += kg
-
-        # out-of-balance-vector
+        # OUT-OF-BALANCE VECTOR
         g = fin - load_factor*fex
 
-        # apply boundary condtions
+        # APPLY BOUNDARY CONDITIONS
         constrDOF = 3*(BC[:,0]-1) + BC[:,1] - 1
         for i in constrDOF:
             g[i] = 0
-            K[i,:] = 0
-            K[:,i] = 0
-            K[i,i] = 1
+            K[i,:], Kg[i,:] = 0, 0
+            K[:,i], Kg[:,i] = 0, 0
+            K[i,i], Kg[i,i] = 1, 1
 
-            if lin_Buckling:
-                Kg[i,:] = 0
-                Kg[:,i] = 0
-                Kg[i,i] = 1
-
-        # determine error
+        # determine and print relative error 
         err = np.linalg.norm(g)/np.linalg.norm(fex)
-        print("{:.3e}".format(err))
+        print(f"{k+1:2d}     {err:.3e}")
 
-        # convergence check
+        # CONVERGENCE CHECK
         if k > 0:
-            if err<1E-5:
+            if err<1E-6:
 
                 # stability check
                 _, D, _ = ldl(K)
@@ -747,35 +783,42 @@ for j in range(0,num_Inc):
                 plot_monitor[j+1,:] = [load_factor, u[dof_monitor], np.sum(diag_Elements < 1E-6) ]
                 count_inc += 1
 
+                # print load factor and number of negative diagonal entries
                 print(f"Load factor: {load_factor:4.3f}")
                 print(f'Negative diagonal: {plot_monitor[j+1,2]:2.0f}')
 
+                # stop iteration
                 break
 
-        # solve
+        # SOLVE LINEARIZED SYSTEM
         if arc_Length:
+            # ARC-LENGTH METHOD
             # Riks method
             if k == 0:
                 # Prediction 
                 Du = np.linalg.solve(K,fex)
 
-                # sign of loading
+                # sign of loading increment
                 if j == 0:
+                    # first increment
                     lfac_sign = 1
+                    # determine arc length
+                    arc_Length = np.linalg.norm(intial_Load_Factor*Du)
                 else:
                     lfac_sign = np.sign(Du_old.T @ Du + DL_fac)
                     DL_fac = 0
                     Du_old[:] = 0
 
                 # determine load increment according to arc-length
-                DL_fac0 = lfac_sign*arc_L_est/np.sqrt(Du.T @ Du + 1)
-
-                # update
+                DL_fac0 = lfac_sign*arc_Length/np.sqrt(Du.T @ Du + 1)
                 Du0 = DL_fac0*Du
+
+                # update displacements and load factor
                 u += Du0
                 load_factor += DL_fac0
 
             else:
+                # correction
                 # displacements for g and fex
                 F[:,0] = -g
                 du = np.linalg.solve(K,F)
@@ -785,44 +828,33 @@ for j in range(0,num_Inc):
 
                 # update
                 load_factor += dl_fac
-                DL_fac += dl_fac
-                Du_old += du[:,0] + dl_fac*du[:,1]
-                u += du[:,0] + dl_fac*du[:,1]
+                DL_fac      += dl_fac
+                # displacements
+                u_inc = du[:, 0] + dl_fac * du[:, 1]
+                Du_old += u_inc
+                u      += u_inc
         else:
-            # load controlled
+
+            # LOAD CONTROLLED
             u += np.linalg.solve(K,-g)
 
+    # reach maximum number of iterations
     if k==19:
-        print('***\n   Iteration failed!  \n\n')  
-        break 
+        inc_loading = True
 
-print('***\n   Computation completed sucessfully!  \n\n')
+    # stop incremental loading
+    if inc_loading:
+        break
 
-# *** MONITOR WINDOW ***
-# Or just use original order
-x = plot_monitor[:, 1]
-y = plot_monitor[:, 0]
+# print computation end status
+if inc_loading:
+    plot_monitor = plot_monitor[:-2, :] 
+    print('***\n   Iteration does not converge!  \n***')
+else:
+    print('***\n   Computation completed sucessfully!  \n***')
 
-# Plot blue line through all points
-plt.plot(x, y, color='blue', linewidth=2)
-
-# Masks for coloring dots
-green_mask = (plot_monitor[:, 2] == 0)
-red_mask = (plot_monitor[:, 2] > 0)
-
-# Plot dots with colors
-plt.plot(plot_monitor[green_mask, 1], plot_monitor[green_mask, 0],
-         'o', markerfacecolor='green', markeredgecolor='black', label='stable')
-
-plt.plot(plot_monitor[red_mask, 1], plot_monitor[red_mask, 0],
-         'o', markerfacecolor='red', markeredgecolor='black', label='unstable')
-
-plt.grid(True)
-plt.ylabel('load factor')
-plt.xlabel('monitor DOF')
-plt.legend()
-plt.show()
-
+# plot monitor DOF
+plot_monitorDOF(plot_monitor)
 
 # plot deformation
 plot_Deformation(N,u)
