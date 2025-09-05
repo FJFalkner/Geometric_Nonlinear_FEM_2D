@@ -1,10 +1,10 @@
 from typing import Self
+from collections.abc import Callable
 
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.linalg import ldl
 from scipy.linalg import eig
-
 
 def B2D_LR(ue, EA, EI, GAq, l):
     """
@@ -205,11 +205,7 @@ def B2D_SR(ue, EA, EI, GAq, l):
 
     D = np.diag([EA, EI])
 
-    xx = 0
-
-    for i in range(0, len(wI)):
-        x = xI[i]
-        w = wI[i]
+    for x, w in zip(xI, wI):
 
         # derivative of shape functions
         # first
@@ -257,7 +253,7 @@ def B2D_SR(ue, EA, EI, GAq, l):
     
     return fine.flatten(), kme+kge, kge
 
-def assemble(N, E, e_Type, u, EA, EI, GAq):
+def assemble(N, E, elem_func: Callable[[np.ndarray, float, float, float, float], tuple], u, EA, EI, GAq):
     # number of DOF
     numDOF = N.shape[0] * 3
     # number of elements
@@ -291,10 +287,7 @@ def assemble(N, E, e_Type, u, EA, EI, GAq):
         ue[3:6] = T @ ue[3:6]
 
         # element arrays
-        if e_Type == "Beam2D_LR":
-            fine, ke, kg = B2D_LR(ue, EA, EI, GAq, l)
-        else:
-            fine, ke, kg = B2D_SR(ue, EA, EI, GAq, l)
+        fine, ke, kg = elem_func(ue, EA, EI, GAq, l)
 
         # TRANSFORMATION:
         # internal force vector
@@ -728,8 +721,8 @@ imp = False
 scal_BM = 0.0005
 # number of load increments
 num_Inc = 20
-# element type
-e_Type = "Beam2D_LR"
+# element type --> pass actual function that returesn fin, k, kg
+elem_func = B2D_LR
 # stop incremental loading
 inc_loading = False
 
@@ -783,7 +776,7 @@ for j in range(0, num_Inc):
             load_factor = fac[j]
 
         # DIRECT STIFFNESS METHOD
-        fin, K, Kg = assemble(N, E, e_Type, u, EA, EI, GAq)
+        fin, K, Kg = assemble(N, E, elem_func, u, EA, EI, GAq)
 
         # OUT-OF-BALANCE VECTOR
         g = fin - load_factor * fex
@@ -910,9 +903,7 @@ if lin_Buckling:
     # Filter:
     # - Near zero: |λ| < threshold
     # - Not near -1: |λ + 1| > tol
-    near_zero_mask = (np.abs(eigvals) < threshold_near_0) & (
-        np.abs(eigvals + 1.0) > tol_near_neg1
-    )
+    near_zero_mask = (np.abs(eigvals) < threshold_near_0) & (np.abs(eigvals + 1.0) > tol_near_neg1)
 
     # Apply mask
     near_zero_vals = eigvals[near_zero_mask]
