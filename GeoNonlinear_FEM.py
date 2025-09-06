@@ -347,6 +347,109 @@ class MaterialProperty:
         inst.nu = nu
         inst.G = E / (2 * (1 + nu))
         return inst
+    
+class SectionProperty2:
+
+    def __init__(self, b: float, h: float, E: float = 2.1E11, nu: float = 0.3, rho: float = 7850):
+
+        # initial material steel in kg, N, m
+        self.EI   = E*b*h**3/12
+        self.EA   = E*b*h
+        self.GAq  = 5/6*b*h*E/(2*(1+nu))
+        self.rhoA = rho*b*h
+
+# geometric nonlinear examples
+class GNLexamples:
+
+    def __init__(self):
+
+        self.N: float
+        self.E: float
+        self.BC: float
+        self.F: float
+        self.monDOF: float
+        self.sec = None 
+
+    @classmethod
+    def leafSpring(cls, b: float, h: float, M: float, L: float = 0.5, n: int = 10):
+        """
+        Construct a simple 2D leaf-spring beam problem.
+        b: width
+        h: thickness
+        M: applied end moment
+        L: total length (default 0.5 m)
+        n: number of elements (default 10)
+        """
+        inst = cls()
+        # nodes
+        inst.N = np.zeros((n + 1, 2))
+        inst.N[:, 0] = np.linspace(0, L, n + 1)
+        # elements
+        inst.E = np.zeros((n, 2), dtype=int)
+        inst.E[:, 0] = np.linspace(2, n + 1, n)
+        inst.E[:, 1] = np.linspace(1, n, n)
+        # boundary conditions
+        inst.BC = np.array([[1, 1], [1, 2], [1, 3]])
+        # external force
+        inst.F = np.array([[n + 1, 3, M]])
+        # monitor DOF
+        inst.monDOF = [n + 1, 1]
+        # section properties
+        inst.sec = SectionProperty2(b, h)
+
+        return inst
+    
+    @classmethod
+    def shallowArch(cls, R: float = 40, alpha: float = 20, F: float = 1E6, b: float = 0.01, h: float = 0.2, n: int = 40):
+        """
+        Construct a shallow arch under a point load at the center and pinned supports at the ends.
+        R:      radius of the arch
+        alpha:  half of the opening angle in degrees
+        F:      magnitude of the vertical force
+        b:      width of the cross section
+        h:      height of the cross section
+        n:      number of elements used
+        """
+        inst = cls()
+        # nodes
+        phi0 = alpha / 180 * np.pi
+        phi = np.linspace(-phi0, phi0, n + 1)
+        inst.N = np.zeros((n + 1, 2))
+        inst.N[:, 0] = R * np.sin(phi)
+        inst.N[:, 1] = R * np.cos(phi)
+        # elements
+        inst.E = np.zeros((n, 2), dtype="int")
+        inst.E[:, 0] = np.linspace(2, n + 1, n)
+        inst.E[:, 1] = np.linspace(1, n, n)
+        # boundary conditions
+        inst.BC = np.array([[1, 1],
+                            [1, 2],
+                            [n+1, 1],
+                            [n+1, 2]], dtype="int")
+        # force at center
+        inst.F = np.array([[n / 2 + 1, 2, -F]])
+        # section
+        inst.sec = SectionProperty2(b, h)
+        # monitor DOF
+        inst.monDOF = [n / 2 + 1, 2]
+
+        return inst
+    
+    def plotMesh(self):
+        """
+        plot mesh of finite element discretization
+        """
+        plt.plot(self.N [:,0], self.N[:, 1], 'k-o', markerfacecolor = 'yellow', markeredgecolor='k', markersize = 5)
+        indBC = (self.BC[:,0] - 1).astype(int)
+        plt.plot(self.N [indBC,0], self.N[indBC, 1], 'o', markerfacecolor = 'red', markeredgecolor='k', markersize = 6)
+        indF = (self.F[:,0] - 1).astype(int)
+        plt.plot(self.N [indF,0], self.N[indF, 1], 'o', markerfacecolor = 'green', markeredgecolor='k', markersize = 6)
+        plt.axis('equal')
+        plt.xlabel('x')
+        plt.ylabel('y')
+        plt.grid(which = 'major', linestyle = ':')
+        plt.show()
+
 
 def example(n):
     # Blattfeder
@@ -367,6 +470,8 @@ def example(n):
 
         rect = SectionProperty.rectangular(width = 100, height = 150)
         steel = MaterialProperty.isotropic(E = 210000, nu = 0.3)
+
+        sec = SectionProperty2(b = 0.010, h = 0.001)
 
         EA = steel.E * rect.A
         EI = steel.E * rect.I
@@ -710,6 +815,12 @@ def plot_monitorDOF(plot_monitor):
 # 8 ... Shallow arch - point load
 N, E, BC, F, EA, EI, GAq, monitor_DOF = example(1)
 
+# get discretizatin of example
+# FEinput = GNLexamples.leafSpring(b = 0.05, h = 0.001, M = 2)
+mesh = GNLexamples.shallowArch(n = 20)
+# plot mesh
+mesh.plotMesh()
+
 # *** ANALYSE TYPE ***
 # arc-length method (Risk's method)
 arc_Length = False
@@ -726,220 +837,220 @@ elem_func = B2D_LR
 # stop incremental loading
 inc_loading = False
 
-# apply geometric imperfection
-if imp:
-    buckling_modes = np.load("bucklingModes.npy")
-    N[:, 0] += scal_BM * buckling_modes[0::3, 0]
-    N[:, 1] += scal_BM * buckling_modes[1::3, 0]
+# # apply geometric imperfection
+# if imp:
+#     buckling_modes = np.load("bucklingModes.npy")
+#     N[:, 0] += scal_BM * buckling_modes[0::3, 0]
+#     N[:, 1] += scal_BM * buckling_modes[1::3, 0]
 
-# *** CHARCTERISTIC VALUES AND PRELOCATE MEMORY ***
-# number of nodes
-numN = N.shape[0]
-# number of DOF
-numDOF = 3 * numN
-# nodal displacements
-u = np.zeros(numDOF)
-# out-of-balance vector
-g = np.zeros(numDOF)
-# external force vector
-fex = np.zeros(numDOF, dtype="float")
-for i in range(0, F.shape[0]):
-    fex[int(3 * (F[i, 0] - 1) + F[i, 1] - 1)] += F[i, 2]
+# # *** CHARCTERISTIC VALUES AND PRELOCATE MEMORY ***
+# # number of nodes
+# numN = N.shape[0]
+# # number of DOF
+# numDOF = 3 * numN
+# # nodal displacements
+# u = np.zeros(numDOF)
+# # out-of-balance vector
+# g = np.zeros(numDOF)
+# # external force vector
+# fex = np.zeros(numDOF, dtype="float")
+# for i in range(0, F.shape[0]):
+#     fex[int(3 * (F[i, 0] - 1) + F[i, 1] - 1)] += F[i, 2]
 
-# monitor DOF
-dof_monitor = int(3 * (monitor_DOF[0] - 1) + monitor_DOF[1] - 1)
-plot_monitor = np.zeros((num_Inc + 1, 3))
-count_inc = int(1)
+# # monitor DOF
+# dof_monitor = int(3 * (monitor_DOF[0] - 1) + monitor_DOF[1] - 1)
+# plot_monitor = np.zeros((num_Inc + 1, 3))
+# count_inc = int(1)
 
-# load factor
-load_factor = 0.0
+# # load factor
+# load_factor = 0.0
 
-if arc_Length:
-    # arc-length method
-    F = np.zeros((numDOF, 2))
-    F[:, 1] = fex
-    DL_fac = 0
-    Du_old = np.zeros(numDOF)
-else:
-    # load control
-    fac = np.arange(1 / num_Inc, 1 + 1 / num_Inc, 1 / num_Inc)
+# if arc_Length:
+#     # arc-length method
+#     F = np.zeros((numDOF, 2))
+#     F[:, 1] = fex
+#     DL_fac = 0
+#     Du_old = np.zeros(numDOF)
+# else:
+#     # load control
+#     fac = np.arange(1 / num_Inc, 1 + 1 / num_Inc, 1 / num_Inc)
 
-# START INCREMENTAL LOADING
-for j in range(0, num_Inc):
-    # print increment
-    print("***")
-    print(f"Increment:  {j:2.0f}")
+# # START INCREMENTAL LOADING
+# for j in range(0, num_Inc):
+#     # print increment
+#     print("***")
+#     print(f"Increment:  {j:2.0f}")
 
-    # START NEWTON ITERATION
-    for k in range(0, 20):
-        if arc_Length == False:
-            load_factor = fac[j]
+#     # START NEWTON ITERATION
+#     for k in range(0, 20):
+#         if arc_Length == False:
+#             load_factor = fac[j]
 
-        # DIRECT STIFFNESS METHOD
-        fin, K, Kg = assemble(N, E, elem_func, u, EA, EI, GAq)
+#         # DIRECT STIFFNESS METHOD
+#         fin, K, Kg = assemble(N, E, elem_func, u, EA, EI, GAq)
 
-        # OUT-OF-BALANCE VECTOR
-        g = fin - load_factor * fex
+#         # OUT-OF-BALANCE VECTOR
+#         g = fin - load_factor * fex
 
-        # APPLY BOUNDARY CONDITIONS
-        constrDOF = 3 * (BC[:, 0] - 1) + BC[:, 1] - 1
-        for i in constrDOF:
-            g[i] = 0
-            K[i, :], Kg[i, :] = 0, 0
-            K[:, i], Kg[:, i] = 0, 0
-            K[i, i], Kg[i, i] = 1, 1
+#         # APPLY BOUNDARY CONDITIONS
+#         constrDOF = 3 * (BC[:, 0] - 1) + BC[:, 1] - 1
+#         for i in constrDOF:
+#             g[i] = 0
+#             K[i, :], Kg[i, :] = 0, 0
+#             K[:, i], Kg[:, i] = 0, 0
+#             K[i, i], Kg[i, i] = 1, 1
 
-        # determine and print relative error
-        err = np.linalg.norm(g) / np.linalg.norm(fex)
-        print(f"{k + 1:2d}     {err:.3e}")
+#         # determine and print relative error
+#         err = np.linalg.norm(g) / np.linalg.norm(fex)
+#         print(f"{k + 1:2d}     {err:.3e}")
 
-        # CONVERGENCE CHECK
-        if k > 0:
-            if err < 1e-6:
-                # stability check
-                _, D, _ = ldl(K)
-                diag_Elements = np.diag(D)
+#         # CONVERGENCE CHECK
+#         if k > 0:
+#             if err < 1e-6:
+#                 # stability check
+#                 _, D, _ = ldl(K)
+#                 diag_Elements = np.diag(D)
 
-                # monitor DOF
-                plot_monitor[j+1,:] = [load_factor, u[dof_monitor], np.sum(diag_Elements < 1E-6) ]
-                count_inc += 1
+#                 # monitor DOF
+#                 plot_monitor[j+1,:] = [load_factor, u[dof_monitor], np.sum(diag_Elements < 1E-6) ]
+#                 count_inc += 1
 
-                # print load factor and number of negative diagonal entries
-                print(f"Load factor: {load_factor:4.3f}")
-                print(f"Negative diagonal: {plot_monitor[j + 1, 2]:2.0f}")
+#                 # print load factor and number of negative diagonal entries
+#                 print(f"Load factor: {load_factor:4.3f}")
+#                 print(f"Negative diagonal: {plot_monitor[j + 1, 2]:2.0f}")
 
-                # stop iteration
-                break
+#                 # stop iteration
+#                 break
 
-        # SOLVE LINEARIZED SYSTEM
-        if arc_Length:
-            # ARC-LENGTH METHOD
-            # Riks method
-            if k == 0:
-                # Prediction
-                Du = np.linalg.solve(K, fex)
+#         # SOLVE LINEARIZED SYSTEM
+#         if arc_Length:
+#             # ARC-LENGTH METHOD
+#             # Riks method
+#             if k == 0:
+#                 # Prediction
+#                 Du = np.linalg.solve(K, fex)
 
-                # sign of loading increment
-                if j == 0:
-                    # first increment
-                    lfac_sign = 1
-                    # determine arc length
-                    arc_Length = np.linalg.norm(intial_Load_Factor * Du)
-                else:
-                    lfac_sign = np.sign(Du_old.T @ Du + DL_fac)
-                    DL_fac = 0
-                    Du_old[:] = 0
+#                 # sign of loading increment
+#                 if j == 0:
+#                     # first increment
+#                     lfac_sign = 1
+#                     # determine arc length
+#                     arc_Length = np.linalg.norm(intial_Load_Factor * Du)
+#                 else:
+#                     lfac_sign = np.sign(Du_old.T @ Du + DL_fac)
+#                     DL_fac = 0
+#                     Du_old[:] = 0
 
-                # determine load increment according to arc-length
-                DL_fac0 = lfac_sign * arc_Length / np.sqrt(Du.T @ Du + 1)
-                Du0 = DL_fac0 * Du
+#                 # determine load increment according to arc-length
+#                 DL_fac0 = lfac_sign * arc_Length / np.sqrt(Du.T @ Du + 1)
+#                 Du0 = DL_fac0 * Du
 
-                # update displacements and load factor
-                u += Du0
-                load_factor += DL_fac0
+#                 # update displacements and load factor
+#                 u += Du0
+#                 load_factor += DL_fac0
 
-            else:
-                # correction
-                # displacements for g and fex
-                F[:, 0] = -g
-                du = np.linalg.solve(K, F)
+#             else:
+#                 # correction
+#                 # displacements for g and fex
+#                 F[:, 0] = -g
+#                 du = np.linalg.solve(K, F)
 
-                # change of load factor according to constrained (plane - Riks method)
-                dl_fac = (-Du0.T @ du[:, 0]) / (Du0.T @ du[:, 1] + DL_fac0)
+#                 # change of load factor according to constrained (plane - Riks method)
+#                 dl_fac = (-Du0.T @ du[:, 0]) / (Du0.T @ du[:, 1] + DL_fac0)
 
-                # update
-                load_factor += dl_fac
-                DL_fac += dl_fac
-                # displacements
-                u_inc = du[:, 0] + dl_fac * du[:, 1]
-                Du_old += u_inc
-                u += u_inc
-        else:
-            # LOAD CONTROLLED
-            u += np.linalg.solve(K, -g)
+#                 # update
+#                 load_factor += dl_fac
+#                 DL_fac += dl_fac
+#                 # displacements
+#                 u_inc = du[:, 0] + dl_fac * du[:, 1]
+#                 Du_old += u_inc
+#                 u += u_inc
+#         else:
+#             # LOAD CONTROLLED
+#             u += np.linalg.solve(K, -g)
 
-    # reach maximum number of iterations
-    if k == 19:
-        inc_loading = True
+#     # reach maximum number of iterations
+#     if k == 19:
+#         inc_loading = True
 
-    # stop incremental loading
-    if inc_loading:
-        break
+#     # stop incremental loading
+#     if inc_loading:
+#         break
 
-# print computation end status
-if inc_loading:
-    plot_monitor = plot_monitor[:-2, :]
-    print("***\n   Iteration does not converge!  \n***")
-else:
-    print("***\n   Computation completed sucessfully!  \n***")
+# # print computation end status
+# if inc_loading:
+#     plot_monitor = plot_monitor[:-2, :]
+#     print("***\n   Iteration does not converge!  \n***")
+# else:
+#     print("***\n   Computation completed sucessfully!  \n***")
 
-# plot monitor DOF
-plot_monitorDOF(plot_monitor)
+# # plot monitor DOF
+# plot_monitorDOF(plot_monitor)
 
-# plot deformation
-plot_Deformation(N, u)
+# # plot deformation
+# plot_Deformation(N, u)
 
 
-# *** LINEARIZED BUCKLING ANALYSIS ***
-if lin_Buckling:
-    # Solve generalized eigenvalue problem: K u = λ (-Kg) u
-    eigvals, eigvecs = eig(K, -Kg)
+# # *** LINEARIZED BUCKLING ANALYSIS ***
+# if lin_Buckling:
+#     # Solve generalized eigenvalue problem: K u = λ (-Kg) u
+#     eigvals, eigvecs = eig(K, -Kg)
 
-    # Scale each eigenvector so its max absolute entry is 1
-    eigvecs_scaled = np.zeros_like(eigvecs)
-    for i in range(eigvecs.shape[1]):
-        vec = eigvecs[:, i]
-        max_val = np.max(np.abs(vec))
-        eigvecs_scaled[:, i] = vec / max_val
+#     # Scale each eigenvector so its max absolute entry is 1
+#     eigvecs_scaled = np.zeros_like(eigvecs)
+#     for i in range(eigvecs.shape[1]):
+#         vec = eigvecs[:, i]
+#         max_val = np.max(np.abs(vec))
+#         eigvecs_scaled[:, i] = vec / max_val
 
-    # Take real parts
-    eigvals = np.real(eigvals)
-    eigvecs = np.real(eigvecs_scaled)
+#     # Take real parts
+#     eigvals = np.real(eigvals)
+#     eigvecs = np.real(eigvecs_scaled)
 
-    # Define tolerances
-    tol_near_neg1 = 1e-3  # Exclude eigenvalues near -1
-    threshold_near_0 = 10  # Keep eigenvalues near 0
+#     # Define tolerances
+#     tol_near_neg1 = 1e-3  # Exclude eigenvalues near -1
+#     threshold_near_0 = 10  # Keep eigenvalues near 0
 
-    # Filter:
-    # - Near zero: |λ| < threshold
-    # - Not near -1: |λ + 1| > tol
-    near_zero_mask = (np.abs(eigvals) < threshold_near_0) & (np.abs(eigvals + 1.0) > tol_near_neg1)
+#     # Filter:
+#     # - Near zero: |λ| < threshold
+#     # - Not near -1: |λ + 1| > tol
+#     near_zero_mask = (np.abs(eigvals) < threshold_near_0) & (np.abs(eigvals + 1.0) > tol_near_neg1)
 
-    # Apply mask
-    near_zero_vals = eigvals[near_zero_mask]
-    near_zero_vecs = eigvecs_scaled[:, near_zero_mask]
+#     # Apply mask
+#     near_zero_vals = eigvals[near_zero_mask]
+#     near_zero_vecs = eigvecs_scaled[:, near_zero_mask]
 
-    # Sort by proximity to zero
-    sorted_indices = np.argsort(np.abs(near_zero_vals))
-    critical_loads = near_zero_vals[sorted_indices]
-    buckling_modes = near_zero_vecs[:, sorted_indices]
+#     # Sort by proximity to zero
+#     sorted_indices = np.argsort(np.abs(near_zero_vals))
+#     critical_loads = near_zero_vals[sorted_indices]
+#     buckling_modes = near_zero_vecs[:, sorted_indices]
 
-    # --- Print ---
-    print("LINEARIZED BUCKLING ANALYSIS\n")
-    print("Critical loads:")
-    for val in critical_loads[:5]:
-        print(f"  {val:10.4e}")
+#     # --- Print ---
+#     print("LINEARIZED BUCKLING ANALYSIS\n")
+#     print("Critical loads:")
+#     for val in critical_loads[:5]:
+#         print(f"  {val:10.4e}")
 
-    # Get mode shape for smallest positive eigenvalue (≠ 1)
-    smallest_val = critical_loads[0]
+#     # Get mode shape for smallest positive eigenvalue (≠ 1)
+#     smallest_val = critical_loads[0]
 
-    x_coords = N[:, 0]
-    y_coords = N[:, 1]
+#     x_coords = N[:, 0]
+#     y_coords = N[:, 1]
 
-    # Bounding box size
-    Lx = x_coords.max() - x_coords.min()
-    Ly = y_coords.max() - y_coords.min()
+#     # Bounding box size
+#     Lx = x_coords.max() - x_coords.min()
+#     Ly = y_coords.max() - y_coords.min()
 
-    # Characteristic dimension (diagonal of bounding box) - scaling of buckling mode
-    L_char = np.sqrt(Lx**2 + Ly**2)
-    uMax = np.max(np.abs(buckling_modes[:, 0]))
-    scal = L_char / 10 / uMax
-    # buckling mode
-    u[:] = 0
-    u = buckling_modes[:, 0:3] * scal
+#     # Characteristic dimension (diagonal of bounding box) - scaling of buckling mode
+#     L_char = np.sqrt(Lx**2 + Ly**2)
+#     uMax = np.max(np.abs(buckling_modes[:, 0]))
+#     scal = L_char / 10 / uMax
+#     # buckling mode
+#     u[:] = 0
+#     u = buckling_modes[:, 0:3] * scal
 
-    # save modes
-    np.save("bucklingModes.npy", buckling_modes)
+#     # save modes
+#     np.save("bucklingModes.npy", buckling_modes)
 
-    # plot modes
-    plot_BucklingModes(N, u)
+#     # plot modes
+#     plot_BucklingModes(N, u)
