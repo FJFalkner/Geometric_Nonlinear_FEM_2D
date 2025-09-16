@@ -358,7 +358,7 @@ class SectionProperty2:
         self.GAq  = 5/6*b*h*E/(2*(1+nu))
         self.rhoA = rho*b*h
 
-# geometric nonlinear examples
+# Geometric nonlinear examples
 class GNLexamples:
 
     def __init__(self):
@@ -450,24 +450,33 @@ class GNLexamples:
         plt.grid(which = 'major', linestyle = ':')
         plt.show()
 
+# Finite element solvers
 class FEMsolve:
 
     def __init__(self):
         self.numDOF: int = 0
         self.u: Optional[np.ndarray] = None
-        self.g: Optional[np.ndarray] = None
-        self.K: Optional[np.ndarray] = None
-        self.Kg: Optional[np.ndarray] = None
         self.monVal: Optional[np.ndarray] = None
 
     @classmethod
-    def LoadCon(cls, mesh, numInc: int):
+    def LoadCon(cls, mesh, numInc: int, maxIter: int = 15, maxErr: float = 1E-6, elType: Callable = B2D_SR):
+        """
+        Load-controlled nonlinear finite element analysis
+            - full newton method
+            - constant incremental loading 
+
+        mesh:    finite element discretization
+        numInc:  number of load increments
+        maxIter: maximum number of iterations (default: 15)
+        maxErr:  maximum relative error in equilibrium (default: 1E-6)
+        elType:  element type (default: B2D_SR)
+        """
 
         inst = cls()
 
         # monitor dof
         dofM = int(3*(mesh.monDOF[0] - 1) + mesh.monDOF[1])
-        inst.monVal = np.zeros((1, 3))
+        inst.monVal = np.array([[0, 0, 0]])
 
         # degrees of freedom
         inst.numDOF = 3*mesh.N.shape[0]
@@ -476,7 +485,7 @@ class FEMsolve:
         inst.u = np.zeros(inst.numDOF)
 
         # out-of-balance vector
-        inst.g = np.zeros(inst.numDOF)
+        g = np.zeros(inst.numDOF)
 
         # external force vector
         fex = np.zeros(inst.numDOF, dtype="float")
@@ -495,41 +504,50 @@ class FEMsolve:
             print(f"Lambda = {Lambda:5.4f}")
 
             # START NEWTON ITERATION
-            for iter in range(0,16):
+            for iter in range(0,maxIter):
 
                 # global arrays
-                fin, inst.K, _ = inst.assemble(mesh, inst.u)
+                fin, K, _ = inst.assemble(mesh, inst.u, elType)
 
                 # out-of-balance vector
-                inst.g = fin - Lambda*fex
+                g = fin - Lambda*fex
 
                 # apply boundary conditions
-                inst.applyBD(inst.K, inst.g, constrDOF = constrDOF)
+                inst.applyBD(K, g, constrDOF = constrDOF)
 
                 # convergence check
-                err = np.linalg.norm(inst.g)/(Lambda*np.linalg.norm(fex))
+                err = np.linalg.norm(g)/(Lambda*np.linalg.norm(fex))
                 print(f"{iter+1:3d}    {err:12.4e}")
 
                 # solution converged
-                if err < 1E-6:
+                if err < maxErr:
                     # stability check
-                    eigVal = np.linalg.eigvals(inst.K)
+                    eigVal = np.linalg.eigvals(K)
+                    numNegEig = np.sum(eigVal<1E-8)
                     
                     # get monitor dof
-                    inst.monVal = np.append(inst.monVal, np.array([[Lambda, inst.u[dofM], np.sum(eigVal<1E-8)]]), axis = 0)
+                    inst.monVal = np.append(inst.monVal, np.array([[Lambda, inst.u[dofM], numNegEig]]), axis = 0)
 
-                    print("-------------------")
+                    # print stability
+                    print(f"-------------------\nNeg. EigVal = {numNegEig:2d}\n*******************")
 
                     # stop equilibrium iteration
                     break
 
+                # maximum number of iterations reached
+                if iter == maxIter-1:
+
+                    # error message
+                    print(f"*******************\n ITERATION FAILED!\n*******************")
+
+                    return inst
+
                 # solve and update displacements
-                inst.u += np.linalg.solve(inst.K, -inst.g)
+                inst.u += np.linalg.solve(K, -g)
 
         return inst
 
-
-    def assemble(self, mesh: GNLexamples, u:  np.ndarray):
+    def assemble(self, mesh: GNLexamples, u:  np.ndarray, elem_func: Callable[[np.ndarray, float, float, float, float], tuple]):
 
         # number of DOF
         numDOF = mesh.N.shape[0] * 3
@@ -566,7 +584,7 @@ class FEMsolve:
             ue[3:6] = T @ ue[3:6]
 
             # element arrays
-            fine, ke, kge = B2D_SR(ue, mesh.sec.EA, mesh.sec.EI, mesh.sec.GAq, l)
+            fine, ke, kge = elem_func(ue, mesh.sec.EA, mesh.sec.EI, mesh.sec.GAq, l)
 
             # TRANSFORMATION:
             # internal force vector
@@ -1025,20 +1043,18 @@ def plot_monitorDOF(plot_monitor):
 # N, E, BC, F, EA, EI, GAq, monitor_DOF = example(1)
 
 # get discretizatin of example
-# FEinput = GNLexamples.leafSpring(b = 0.05, h = 0.001, M = 2)
-mesh = GNLexamples.shallowArch(n = 20, F = 8E4)
+mesh = GNLexamples.leafSpring(b = 0.05, h = 0.001, M = 10)
+#mesh = GNLexamples.shallowArch(n = 20, F = 8E4)
 # plot mesh
 mesh.plotMesh()
 
 # solve
-sol = FEMsolve.LoadCon(mesh, numInc = 5)
+sol = FEMsolve.LoadCon(mesh, numInc = 10, elType = B2D_LR)
 
 # plot monitor window
 sol.plotMonitor()
 # plot displacements
 sol.plotDisplacement(mesh, sol.u)
-
-
 
 # *** ANALYSE TYPE ***
 # arc-length method (Risk's method)

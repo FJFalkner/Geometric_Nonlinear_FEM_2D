@@ -450,46 +450,6 @@ class GNLexamples:
         plt.grid(which = 'major', linestyle = ':')
         plt.show()
 
-class FEMsolve:
-
-    def __init__(self):
-        self.u:   float
-        self.monDOF: float
-
-    @classmethod
-    def LoadCon(cls, mesh, numInc: int):
-
-        inst = cls()
-
-        numDOF = mesh.N.shape[0]*3
-
-        # nodal displacements
-        inst.u = np.zeros(numDOF)
-        # out-of-balance vector
-        g = np.zeros(numDOF)
-        # external force vector
-        fex = np.zeros(numDOF, dtype="float")
-        for i in range(0, mesh.F.shape[0]):
-            fex[int(3 * (mesh.F[i, 0] - 1) + mesh.F[i, 1] - 1)] += mesh.F[i, 2]
-
-        # monitor DOF
-        dof_monitor = int(3 * (monitor_DOF[0] - 1) + monitor_DOF[1] - 1)
-        inst.monDOF = np.zeros((numInc + 1, 3))
-        
-        count_inc = int(1)
-
-        # discrete load steps
-        LambdaD = np.arange(1/numInc,1+1/numInc,1/numInc)
-
-        # *** START INCREMENTAL LOADING ***
-        for Lambda in LambdaD:
-            
-            # start Newton iteration
-            for i in range(0,20):
-
-                
-
-
 
 def example(n):
     # Blattfeder
