@@ -631,7 +631,14 @@ class FEMsolve:
         return inst
 
     @classmethod
-    def linBuckling(cls, mesh, u:np.ndarray, elType: Callable = B2D_SR):
+    def linBuckling(cls, mesh, u:np.ndarray, numModes: int = 3, elType: Callable = B2D_SR):
+        """
+        Linearized Buckling Analysis
+        mesh:     finite element discretization
+        u:        displacements at reference point
+        numModes: number of modes (default = 3)
+        elType:   element type (default = B2D_SR)
+        """
 
         inst = cls()
 
@@ -648,17 +655,41 @@ class FEMsolve:
         # assemble stiffness matrix at reference
         _, K, _ = inst.assemble(mesh, u, elType)
 
+        # apply boundary conditions
         inst.applyBD(K, fex, constrDOF = constrDOF)
 
-        uf = np.linalg.solve(K,fex)
+        # determine tangential displacement
+        ut = np.linalg.solve(K,fex)
 
         # assemble stiffness matrix at reference
-        _, _, Kg = inst.assemble(mesh, uf, elType)
+        _, _, Kg = inst.assemble(mesh, ut, elType)
 
+        # apply boundary conditions
         inst.applyBD(Kg, constrDOF = constrDOF)
 
+        # solve generalized eigenvalue problem
         eigVals, eigVec = eig(K, -Kg)
 
+        # remove eigenvalues close to -1 (boundary conditions)
+        mask = np.abs(eigVals.real + 1) > 1E-6
+        eigValsMod = eigVals[mask]
+        eigVecMod = eigVec[:,mask]
+
+        # sort eigenvalues
+        idx = np.argsort(eigValsMod)
+        LambdaCrit = eigValsMod[idx].real
+        bucklingModes = eigVecMod[:,idx]
+
+        # critical load factors and buckling modes
+        inst.LambdaCrit = LambdaCrit[0:numModes] + 1
+        inst.buckModes = bucklingModes[:,0:numModes]
+
+        # print
+        print(f"LINEARIZED BUCKLING ANALYSIS\nCritical load factors:")
+        for val in inst.LambdaCrit:
+            print(f"{val:6.2f}")
+
+        return inst
 
     
     def assemble(self, mesh: GNLexamples, u:  np.ndarray, elem_func: Callable[[np.ndarray, float, float, float, float], tuple]):
@@ -805,13 +836,14 @@ class FEMsolve:
 mesh = GNLexamples.shallowArch(n = 10, F = 8E3)
 #mesh = GNLexamples.deepArch(F = 1000)
 # plot mesh
-mesh.plotMesh()
+#mesh.plotMesh()
 
 # solve
 sol = FEMsolve.LoadCon(mesh, numInc = 5, elType = B2D_SR)
 #sol = FEMsolve.arcL(mesh, numInc = 20, Lambda0 = 0.5)
 
 sol.plotMonitor()
-sol.plotDisplacement(mesh, sol.u)
+#sol.plotDisplacement(mesh, sol.u)
 
-sol.linBuckling(mesh, sol.u)
+stability = FEMsolve.linBuckling(mesh, sol.u)
+stability.plotDisplacement(mesh, stability.buckModes[:,0])
