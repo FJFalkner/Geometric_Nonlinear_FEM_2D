@@ -1,9 +1,9 @@
 from typing_extensions import Self
+from typing import Optional
 from collections.abc import Callable
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.linalg import ldl
 from scipy.linalg import eig
 
 def B2D_LR(ue, EA, EI, GAq, l):
@@ -431,7 +431,7 @@ class GNLexamples:
         # section
         inst.sec = SectionProperty2(b, h)
         # monitor DOF
-        inst.monDOF = [n / 2 + 1, 2]
+        inst.monDOF = [n / 2 + 1, 1]
 
         return inst
     
@@ -453,41 +453,210 @@ class GNLexamples:
 class FEMsolve:
 
     def __init__(self):
-        self.u:   float
-        self.monDOF: float
+        self.numDOF: int = 0
+        self.u: Optional[np.ndarray] = None
+        self.g: Optional[np.ndarray] = None
+        self.K: Optional[np.ndarray] = None
+        self.Kg: Optional[np.ndarray] = None
+        self.monVal: Optional[np.ndarray] = None
 
     @classmethod
     def LoadCon(cls, mesh, numInc: int):
 
         inst = cls()
 
-        numDOF = mesh.N.shape[0]*3
+        # monitor dof
+        dofM = int(3*(mesh.monDOF[0] - 1) + mesh.monDOF[1])
+        inst.monVal = np.zeros((1, 3))
+
+        # degrees of freedom
+        inst.numDOF = 3*mesh.N.shape[0]
 
         # nodal displacements
-        inst.u = np.zeros(numDOF)
+        inst.u = np.zeros(inst.numDOF)
+
         # out-of-balance vector
-        g = np.zeros(numDOF)
+        inst.g = np.zeros(inst.numDOF)
+
         # external force vector
-        fex = np.zeros(numDOF, dtype="float")
+        fex = np.zeros(inst.numDOF, dtype="float")
         for i in range(0, mesh.F.shape[0]):
             fex[int(3 * (mesh.F[i, 0] - 1) + mesh.F[i, 1] - 1)] += mesh.F[i, 2]
 
-        # monitor DOF
-        dof_monitor = int(3 * (monitor_DOF[0] - 1) + monitor_DOF[1] - 1)
-        inst.monDOF = np.zeros((numInc + 1, 3))
-        
-        count_inc = int(1)
+        # constrained dof
+        constrDOF = np.array([3 * (bc[0] - 1) + bc[1] - 1 for bc in mesh.BC])
 
-        # discrete load steps
-        LambdaD = np.arange(1/numInc,1+1/numInc,1/numInc)
+        # dicrete load steps
+        LambdaD = np.arange(1/numInc, 1+1/numInc, 1/numInc)
 
         # *** START INCREMENTAL LOADING ***
         for Lambda in LambdaD:
-            
-            # start Newton iteration
-            for i in range(0,20):
 
+            print(f"Lambda = {Lambda:5.4f}")
+
+            # START NEWTON ITERATION
+            for iter in range(0,16):
+
+                # global arrays
+                fin, inst.K, _ = inst.assemble(mesh, inst.u)
+
+                # out-of-balance vector
+                inst.g = fin - Lambda*fex
+
+                # apply boundary conditions
+                inst.applyBD(inst.K, inst.g, constrDOF = constrDOF)
+
+                # convergence check
+                err = np.linalg.norm(inst.g)/(Lambda*np.linalg.norm(fex))
+                print(f"{iter+1:3d}    {err:12.4e}")
+
+                # solution converged
+                if err < 1E-6:
+                    # stability check
+                    eigVal = np.linalg.eigvals(inst.K)
+                    
+                    # get monitor dof
+                    inst.monVal = np.append(inst.monVal, np.array([[Lambda, inst.u[dofM], np.sum(eigVal<1E-8)]]), axis = 0)
+
+                    print("-------------------")
+
+                    # stop equilibrium iteration
+                    break
+
+                # solve and update displacements
+                inst.u += np.linalg.solve(inst.K, -inst.g)
+
+        return inst
+
+
+    def assemble(self, mesh: GNLexamples, u:  np.ndarray):
+
+        # number of DOF
+        numDOF = mesh.N.shape[0] * 3
+
+        # intialize arrays
+        fin = np.zeros(numDOF)
+        K   = np.zeros((numDOF, numDOF))
+        Kg  = np.zeros((numDOF, numDOF))
+
+        for x in mesh.E:
+
+            # indices of nodes (python)
+            indN = x - 1
+
+            # indices of element nodal displacements
+            dofE = np.concatenate([3*indN[0]+ np.array([0,1,2]), 3*indN[1] + np.array([0,1,2])])
+
+            # element nodal displacements
+            ue = u[dofE]
+
+            # length of element
+            dx = mesh.N[indN[0], 0] - mesh.N[indN[1], 0]
+            dy = mesh.N[indN[0], 1] - mesh.N[indN[1], 1]
+            l = np.sqrt(dx**2 + dy**2)
+
+            # TRANSFORMATION MATRIX
+            alpha = np.arctan2(dy, dx)
+            T = np.eye(3)
+            T[0, 0], T[0, 1] =  np.cos(alpha), np.sin(alpha)
+            T[1, 0], T[1, 1] = -np.sin(alpha), np.cos(alpha)
+
+            # transform element nodal displacements
+            ue[0:3] = T @ ue[0:3]
+            ue[3:6] = T @ ue[3:6]
+
+            # element arrays
+            fine, ke, kge = B2D_SR(ue, mesh.sec.EA, mesh.sec.EI, mesh.sec.GAq, l)
+
+            # TRANSFORMATION:
+            # internal force vector
+            fine[0:3] = T.T @ fine[0:3]
+            fine[3:6] = T.T @ fine[3:6]
+
+            # element stiffness matrix
+            ke[np.ix_(range(0,3),range(0,3))] = T.T @ ke[np.ix_(range(0,3),range(0,3))] @ T
+            ke[np.ix_(range(0,3),range(3,6))] = T.T @ ke[np.ix_(range(0,3),range(3,6))] @ T
+            ke[np.ix_(range(3,6),range(0,3))] = T.T @ ke[np.ix_(range(3,6),range(0,3))] @ T
+            ke[np.ix_(range(3,6),range(3,6))] = T.T @ ke[np.ix_(range(3,6),range(3,6))] @ T
+
+            # element geometric stiffness matrix
+            kge[np.ix_(range(0,3),range(0,3))] = T.T @ kge[np.ix_(range(0,3),range(0,3))] @ T
+            kge[np.ix_(range(0,3),range(3,6))] = T.T @ kge[np.ix_(range(0,3),range(3,6))] @ T
+            kge[np.ix_(range(3,6),range(0,3))] = T.T @ kge[np.ix_(range(3,6),range(0,3))] @ T
+            kge[np.ix_(range(3,6),range(3,6))] = T.T @ kge[np.ix_(range(3,6),range(3,6))] @ T
+
+            # ASSEMBLING
+            # internal force vector
+            fin[dofE] += fine
+
+            # global stiffness matrix
+            K[np.ix_(dofE, dofE)] += ke
+
+            # global geometric stiffness matrix
+            Kg[np.ix_(dofE, dofE)] += kge
+
+        return fin, K, Kg
+
+    @staticmethod
+    def applyBD(*arrays: np.ndarray, constrDOF: np.ndarray):
+        """
+        Apply boundary conditions to one or more arrays.
+        
+        Parameters
+        ----------
+        *arrays : np.ndarray
+            One or more arrays (matrices/vectors) to modify in-place.
+        constrDOF : np.ndarray
+            List/array of constrained DOFs.
+        """
+        for A in arrays:
+            for dof in constrDOF:
+                # If A is a vector
+                if A.ndim == 1:
+                    A[dof] = 0
                 
+                # If A is a matrix
+                elif A.ndim == 2:
+                    A[:, dof] = 0
+                    A[dof, :] = 0
+                    A[dof, dof] = 1
+
+    def plotDisplacement(self, mesh: GNLexamples, u: np.ndarray, scale: float = 1.0):
+
+        plt.plot(mesh.N [:,0], mesh.N[:, 1], 'k--')
+        plt.plot(mesh.N [:,0] + scale*u[0::3], mesh.N[:, 1] + scale*u[1::3], 'k-o', markerfacecolor = 'yellow', markeredgecolor='k', markersize = 5)
+        plt.axis('equal')
+        plt.xlabel('x')
+        plt.ylabel('y')
+        plt.grid(which = 'major', linestyle = ':')
+        plt.show()
+
+    def plotMonitor(self):
+        # *** MONITOR WINDOW ***
+        # Or just use original order
+        x = self.monVal[:, 1]
+        y = self.monVal[:, 0]
+
+        # Plot blue line through all points
+        plt.plot(x, y, color="blue", linewidth=2)
+
+        # Masks for coloring dots
+        green_mask = self.monVal[:, 2] == 0
+        red_mask = self.monVal[:, 2] > 0
+
+        # Plot dots with colors
+        plt.plot(self.monVal[green_mask, 1], self.monVal[green_mask, 0],
+                'o', markerfacecolor='green', markeredgecolor='black', label='stable')
+
+        plt.plot(self.monVal[red_mask, 1], self.monVal[red_mask, 0],
+                'o', markerfacecolor='red', markeredgecolor='black', label='unstable')
+
+        plt.grid(True)
+        plt.ylabel("load factor")
+        plt.xlabel("monitor DOF")
+        plt.legend()
+        plt.show()
+
 
 
 
@@ -853,15 +1022,23 @@ def plot_monitorDOF(plot_monitor):
 # 6 ... Shallow arch
 # 7 ... Shallow arch - radial pressure
 # 8 ... Shallow arch - point load
-N, E, BC, F, EA, EI, GAq, monitor_DOF = example(1)
+# N, E, BC, F, EA, EI, GAq, monitor_DOF = example(1)
 
 # get discretizatin of example
 # FEinput = GNLexamples.leafSpring(b = 0.05, h = 0.001, M = 2)
-mesh = GNLexamples.shallowArch(n = 20)
+mesh = GNLexamples.shallowArch(n = 20, F = 8E4)
 # plot mesh
 mesh.plotMesh()
 
-sol = FEMsolve.LoadCon(mesh, 5)
+# solve
+sol = FEMsolve.LoadCon(mesh, numInc = 5)
+
+# plot monitor window
+sol.plotMonitor()
+# plot displacements
+sol.plotDisplacement(mesh, sol.u)
+
+
 
 # *** ANALYSE TYPE ***
 # arc-length method (Risk's method)
