@@ -1,9 +1,9 @@
 from typing_extensions import Self
+from typing import Optional
 from collections.abc import Callable
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.linalg import ldl
 from scipy.linalg import eig
 
 def B2D_LR(ue, EA, EI, GAq, l):
@@ -178,7 +178,6 @@ def B2D_LR(ue, EA, EI, GAq, l):
 
     return fin, k, kg
 
-
 def B2D_SR(ue, EA, EI, GAq, l):
     """
     2D beam element for large rotations
@@ -196,9 +195,6 @@ def B2D_SR(ue, EA, EI, GAq, l):
     fine = np.zeros((6, 1), dtype="float")
     kme = np.zeros((6, 6), dtype="float")
     kge = np.zeros((6, 6), dtype="float")
-
-    # xI = [(0.5 - 1/np.sqrt(3))*l, (0.5 + 1/np.sqrt(3))*l]
-    # w  = [l/2, l/2]
 
     xI = [(1 - np.sqrt(3 / 5)) * l / 2, 0.5 * l, (1 + np.sqrt(3 / 5)) * l / 2]
     wI = [5 / 9 * 0.5 * l, 8 / 9 * 0.5 * l, 5 / 9 * 0.5 * l]
@@ -225,7 +221,8 @@ def B2D_SR(ue, EA, EI, GAq, l):
         dudx = dN1dx * u1 + dN4dx * u2
         dwdx = dN2dx * w1 + dN3dx * phi1 + dN5dx * w2 + dN6dx * phi2
         dwdxx = dN2dxx * w1 + dN3dxx * phi1 + dN5dxx * w2 + dN6dxx * phi2
-        E0 = dudx + 0.5 * (dudx**2 + dwdx**2)
+        #E0 = dudx + 0.5 * (dudx**2 + dwdx**2)
+        E0 = dudx + 0.5 * (dwdx**2)
         Kb = dwdxx
 
         # cross section forces
@@ -234,7 +231,9 @@ def B2D_SR(ue, EA, EI, GAq, l):
         CSF = np.array([[N, M]])
 
         # B-matrix
-        B = np.array([[(1+dudx)*dN1dx,  dwdx*dN2dx,   dwdx*dN3dx, (1+dudx)*dN4dx, dwdx*dN5dx, dwdx*dN6dx],
+        #B = np.array([[(1+dudx)*dN1dx,  dwdx*dN2dx,   dwdx*dN3dx, (1+dudx)*dN4dx, dwdx*dN5dx, dwdx*dN6dx],
+        #              [             0,      dN2dxx,       dN3dxx,              0,     dN5dxx,     dN6dxx]])
+        B = np.array([[(1)*dN1dx,  dwdx*dN2dx,   dwdx*dN3dx, (1)*dN4dx, dwdx*dN5dx, dwdx*dN6dx],
                       [             0,      dN2dxx,       dN3dxx,              0,     dN5dxx,     dN6dxx]])
         
         # internal force vector
@@ -244,111 +243,24 @@ def B2D_SR(ue, EA, EI, GAq, l):
         kme += B.T @ D @ B * w
 
         # geometric stiffness matrix
-        kge += N*np.array([[dN1dx*dN1dx,           0,           0, dN1dx*dN4dx,           0,           0],
+        # kge += N*np.array([[dN1dx*dN1dx,           0,           0, dN1dx*dN4dx,           0,           0],
+        #                    [          0, dN2dx*dN2dx, dN2dx*dN3dx,           0, dN2dx*dN5dx, dN2dx*dN6dx],
+        #                    [          0, dN3dx*dN2dx, dN3dx*dN3dx,           0, dN3dx*dN5dx, dN3dx*dN6dx],
+        #                    [dN4dx*dN1dx,           0,           0, dN4dx*dN4dx,           0,           0],
+        #                    [          0, dN5dx*dN2dx, dN5dx*dN3dx,           0, dN5dx*dN5dx, dN5dx*dN6dx],
+        #                    [          0, dN6dx*dN2dx, dN6dx*dN3dx,           0, dN6dx*dN5dx, dN6dx*dN6dx]])*w
+
+        kge += N*np.array([[          0,           0,           0,           0,           0,           0],
                            [          0, dN2dx*dN2dx, dN2dx*dN3dx,           0, dN2dx*dN5dx, dN2dx*dN6dx],
                            [          0, dN3dx*dN2dx, dN3dx*dN3dx,           0, dN3dx*dN5dx, dN3dx*dN6dx],
-                           [dN4dx*dN1dx,           0,           0, dN4dx*dN4dx,           0,           0],
+                           [          0,           0,           0,           0,           0,           0],
                            [          0, dN5dx*dN2dx, dN5dx*dN3dx,           0, dN5dx*dN5dx, dN5dx*dN6dx],
                            [          0, dN6dx*dN2dx, dN6dx*dN3dx,           0, dN6dx*dN5dx, dN6dx*dN6dx]])*w
     
     return fine.flatten(), kme+kge, kge
 
-def assemble(N, E, elem_func: Callable[[np.ndarray, float, float, float, float], tuple], u, EA, EI, GAq):
-    # number of DOF
-    numDOF = N.shape[0] * 3
-    # number of elements
-    numE = E.shape[0]
-
-    # intialize arrays
-    fin = np.zeros(numDOF)
-    K = np.zeros((numDOF, numDOF))
-    Kg = np.zeros((numDOF, numDOF))
-
-    # direct stiffness method
-    for i in range(0, numE):
-        # node indices
-        dof_e = np.concatenate((3*(E[i,0]-1) + np.array([0,1,2]), 3*(E[i,1]-1) + np.array([0,1,2]))).astype(int)
-
-        # length
-        ind = E[i, :] - 1
-        dx = N[ind[0], 0] - N[ind[1], 0]
-        dy = N[ind[0], 1] - N[ind[1], 1]
-        l = np.sqrt(dx**2 + dy**2)
-
-        # TRANSFORMATION MATRIX
-        alpha = np.arctan2(dy, dx)
-        T = np.eye(3)
-        T[0, 0], T[0, 1] = np.cos(alpha), np.sin(alpha)
-        T[1, 0], T[1, 1] = -np.sin(alpha), np.cos(alpha)
-
-        # transform element nodal displacements
-        ue = u[dof_e]
-        ue[0:3] = T @ ue[0:3]
-        ue[3:6] = T @ ue[3:6]
-
-        # element arrays
-        fine, ke, kg = elem_func(ue, EA, EI, GAq, l)
-
-        # TRANSFORMATION:
-        # internal force vector
-        fine[0:3] = T.T @ fine[0:3]
-        fine[3:6] = T.T @ fine[3:6]
-
-        # element stiffness matrix
-        ke[np.ix_(range(0,3),range(0,3))] = T.T @ ke[np.ix_(range(0,3),range(0,3))] @ T
-        ke[np.ix_(range(0,3),range(3,6))] = T.T @ ke[np.ix_(range(0,3),range(3,6))] @ T
-        ke[np.ix_(range(3,6),range(0,3))] = T.T @ ke[np.ix_(range(3,6),range(0,3))] @ T
-        ke[np.ix_(range(3,6),range(3,6))] = T.T @ ke[np.ix_(range(3,6),range(3,6))] @ T
-
-        # element geometric stiffness matrix
-        kg[np.ix_(range(0,3),range(0,3))] = T.T @ kg[np.ix_(range(0,3),range(0,3))] @ T
-        kg[np.ix_(range(0,3),range(3,6))] = T.T @ kg[np.ix_(range(0,3),range(3,6))] @ T
-        kg[np.ix_(range(3,6),range(0,3))] = T.T @ kg[np.ix_(range(3,6),range(0,3))] @ T
-        kg[np.ix_(range(3,6),range(3,6))] = T.T @ kg[np.ix_(range(3,6),range(3,6))] @ T
-
-        # ASSEMBLING
-        # internal force vector
-        fin[dof_e] += fine
-
-        # global stiffness matrix
-        K[np.ix_(dof_e, dof_e)] += ke
-
-        # global geometric stiffness matrix
-        Kg[np.ix_(dof_e, dof_e)] += kg
-
-    return fin, K, Kg
-
+# Section stiffness   
 class SectionProperty:
-
-    def __init__(self):
-        self.A: float | None = None
-        self.I: float | None = None
-        self.Aq: float | None = None
-
-    @classmethod
-    def rectangular(cls, width, height):
-        inst = cls()
-        inst.A = width * height
-        inst.I = width * height**3 / 12
-        inst.Aq = 5 / 6 * inst.A
-        return inst
-
-class MaterialProperty:
-
-    def __init__(self):
-        self.E: float | None = None
-        self.nu: float | None = None
-        self.G: float | None = None
-
-    @classmethod
-    def isotropic(cls, E: float, nu: float) -> Self:
-        inst = cls()
-        inst.E = E
-        inst.nu = nu
-        inst.G = E / (2 * (1 + nu))
-        return inst
-    
-class SectionProperty2:
 
     def __init__(self, b: float, h: float, E: float = 2.1E11, nu: float = 0.3, rho: float = 7850):
 
@@ -358,7 +270,7 @@ class SectionProperty2:
         self.GAq  = 5/6*b*h*E/(2*(1+nu))
         self.rhoA = rho*b*h
 
-# geometric nonlinear examples
+# Geometric nonlinear examples
 class GNLexamples:
 
     def __init__(self):
@@ -368,10 +280,11 @@ class GNLexamples:
         self.BC: float
         self.F: float
         self.monDOF: float
+        self.elType: Callable
         self.sec = None 
 
     @classmethod
-    def leafSpring(cls, b: float, h: float, M: float, L: float = 0.5, n: int = 10):
+    def leafSpring(cls, b: float, h: float, M: float, L: float = 0.5, n: int = 10, elType: Callable = B2D_SR):
         """
         Construct a simple 2D leaf-spring beam problem.
         b: width
@@ -379,6 +292,7 @@ class GNLexamples:
         M: applied end moment
         L: total length (default 0.5 m)
         n: number of elements (default 10)
+        elType: element type (default B2D_SR)
         """
         inst = cls()
         # nodes
@@ -395,12 +309,14 @@ class GNLexamples:
         # monitor DOF
         inst.monDOF = [n + 1, 1]
         # section properties
-        inst.sec = SectionProperty2(b, h)
+        inst.sec = SectionProperty(b, h)
+        # element type
+        inst.elType = elType
 
         return inst
     
     @classmethod
-    def shallowArch(cls, R: float = 40, alpha: float = 20, F: float = 1E6, b: float = 0.01, h: float = 0.2, n: int = 40):
+    def shallowArch(cls, R: float = 40, alpha: float = 20, F: float = 1E6, b: float = 0.01, h: float = 0.2, n: int = 40, elType: Callable = B2D_SR):
         """
         Construct a shallow arch under a point load at the center and pinned supports at the ends.
         R:      radius of the arch
@@ -409,6 +325,7 @@ class GNLexamples:
         b:      width of the cross section
         h:      height of the cross section
         n:      number of elements used
+        elType: element type
         """
         inst = cls()
         # nodes
@@ -429,9 +346,51 @@ class GNLexamples:
         # force at center
         inst.F = np.array([[n / 2 + 1, 2, -F]])
         # section
-        inst.sec = SectionProperty2(b, h)
+        inst.sec = SectionProperty(b, h)
+        # monitor DOF
+        inst.monDOF = [n / 2 + 1, 1]
+        # element type
+        inst.elType = elType
+
+        return inst
+    
+    @classmethod
+    def deepArch(cls, R: float = 100, phi0: float = 215, F: float = 1E6, b: float = 0.01, h: float = 0.2, n: int = 40, elType: Callable = B2D_SR):
+        """
+        Construct a deep arch under a point load at the center and pinned supports at the ends.
+        R:      radius of the arch
+        alpha:  half of the opening angle in degrees
+        F:      magnitude of the vertical force
+        b:      width of the cross section
+        h:      height of the cross section
+        n:      number of elements used
+        """
+        inst = cls()
+        # deep arch
+        R = 100
+        phi0 = 215
+        phi = np.linspace(-17.5 / 180 * np.pi, (180 + 17.5) / 180 * np.pi, n + 1)
+        inst.N = np.zeros((n + 1, 2))
+        inst.N[:, 0] = R * np.cos(phi)
+        inst.N[:, 1] = R * np.sin(phi)
+
+        inst.E = np.zeros((n, 2), dtype=int)
+        inst.E[:, 0] = np.linspace(2, n + 1, n)
+        inst.E[:, 1] = np.linspace(1, n, n)
+
+        inst.BC = np.array([[1, 1],
+                            [1, 2],
+                            [n+1, 1],
+                            [n+1, 2]], dtype=int)
+
+        inst.F = np.array([[n / 2 + 1, 2, -F]])
+
+        # section
+        inst.sec = SectionProperty(b, h)
         # monitor DOF
         inst.monDOF = [n / 2 + 1, 2]
+        # element type
+        inst.elType = elType
 
         return inst
     
@@ -450,609 +409,463 @@ class GNLexamples:
         plt.grid(which = 'major', linestyle = ':')
         plt.show()
 
+    def imperfection(self, imp: np.ndarray, scale: float):
 
-def example(n):
-    # Blattfeder
-    if n == 1:
-        # blattfeder
-        L = 5000
-        n = 20
-        beta = 0 / 180 * np.pi
-        N = np.zeros((n + 1, 2))
-        N[:, 0] = np.linspace(0, L * np.cos(beta), n + 1)
-        N[:, 1] = np.linspace(0, L * np.sin(beta), n + 1)
+        self.N[:,0] += scale*imp[0::3]
+        self.N[:,1] += scale*imp[1::3]
 
-        E = np.zeros((n, 2), dtype=int)
-        E[:, 0] = np.linspace(2, n + 1, n)
-        E[:, 1] = np.linspace(1, n, n)
+# Finite element solvers
+class FEMsolve:
 
-        BC = np.array([[1, 1], [1, 2], [1, 3]])
+    def __init__(self):
+        self.numDOF: int = 0
+        self.u: Optional[np.ndarray] = None
+        self.monVal: Optional[np.ndarray] = None
 
-        rect = SectionProperty.rectangular(width = 100, height = 150)
-        steel = MaterialProperty.isotropic(E = 210000, nu = 0.3)
+    @classmethod
+    def LoadCon(cls, mesh, numInc: int, maxIter: int = 15, maxErr: float = 1E-6):
+        """
+        Load-controlled nonlinear finite element analysis
+            - full newton method
+            - constant incremental loading 
 
-        sec = SectionProperty2(b = 0.010, h = 0.001)
+        mesh:    finite element discretization
+        numInc:  number of load increments
+        maxIter: maximum number of iterations (default: 15)
+        maxErr:  maximum relative error in equilibrium (default: 1E-6)
+        """
 
-        EA = steel.E * rect.A
-        EI = steel.E * rect.I
-        GAq = steel.G * rect.Aq
+        inst = cls()
 
-        F = np.array([[n + 1, 3, 2 * EI * np.pi / L]])
+        # monitor dof
+        dofM = int(3*(mesh.monDOF[0] - 1) + mesh.monDOF[1] -1)
+        inst.monVal = np.array([[0, 0, 0]])
 
-        monitor_DOF = [n + 1, 1]
+        # degrees of freedom
+        inst.numDOF = 3*mesh.N.shape[0]
 
-    if n == 2:
-        # deep arch
-        R = 100
-        n = 40
-        phi0 = 215
-        phi = np.linspace(-17.5 / 180 * np.pi, (180 + 17.5) / 180 * np.pi, n + 1)
-        N = np.zeros((n + 1, 2))
-        N[:, 0] = R * np.cos(phi)
-        N[:, 1] = R * np.sin(phi)
+        # nodal displacements
+        inst.u = np.zeros(inst.numDOF)
 
-        E = np.zeros((n, 2), dtype=int)
-        E[:, 0] = np.linspace(2, n + 1, n)
-        E[:, 1] = np.linspace(1, n, n)
+        # out-of-balance vector
+        g = np.zeros(inst.numDOF)
 
-        BC = np.array([[1, 1],
-                    [1, 2],
-                    [1, 3],
-                    [n+1, 1],
-                    [n+1, 2]], dtype=int)
+        # external force vector
+        fex = np.zeros(inst.numDOF, dtype="float")
+        for i in range(0, mesh.F.shape[0]):
+            fex[int(3 * (mesh.F[i, 0] - 1) + mesh.F[i, 1] - 1)] += mesh.F[i, 2]
 
-        F = np.array([[n / 2 + 1, 2, -10]])
+        # constrained dof
+        constrDOF = np.array([3 * (bc[0] - 1) + bc[1] - 1 for bc in mesh.BC])
 
-        b = 1
-        h = 1
-        EA = 210000 * b * h
-        EI = 210000 * b * h**3 / 12
-        GAq = 5 / 6 * 80760 * b * h
+        # dicrete load steps
+        LambdaD = np.arange(1/numInc, 1+1/numInc, 1/numInc)
 
-        monitor_DOF = [n / 2 + 1, 2]
+        # *** START INCREMENTAL LOADING ***
+        for Lambda in LambdaD:
 
-    if n == 3:
-        # Kragträger
-        L = 5000
-        n = 20
-        beta = 0 / 180 * np.pi
-        N = np.zeros((n + 1, 2))
-        N[:, 0] = np.linspace(0, L * np.cos(beta), n + 1)
-        N[:, 1] = np.linspace(0, L * np.sin(beta), n + 1)
+            print(f"Lambda = {Lambda:5.4f}")
 
-        E = np.zeros((n, 2), dtype="int")
-        E[:, 0] = np.linspace(2, n + 1, n)
-        E[:, 1] = np.linspace(1, n, n)
+            # START NEWTON ITERATION
+            for iter in range(0,maxIter):
 
-        BC = np.array([[1, 1],
-                    [1, 2],
-                    [1, 3]])
+                # global arrays
+                fin, K, _ = inst.assemble(mesh, inst.u, mesh.elType)
 
-        b = 100
-        h = 150
-        EA = 210000 * b * h
-        EI = 210000 * b * h**3 / 12
-        GAq = 5 / 6 * 80760 * b * h
+                # out-of-balance vector
+                g = fin - Lambda*fex
 
-        F = np.array([[n + 1, 2, -1e6]])
+                # apply boundary conditions
+                inst.applyBD(K, g, constrDOF = constrDOF)
 
-        monitor_DOF = [n + 1, 1]
+                # convergence check
+                err = np.linalg.norm(g)/(Lambda*np.linalg.norm(fex))
+                print(f"{iter+1:3d}    {err:12.4e}")
 
-    if n == 4:
-        # einhüfiger Rahmen
-        N = np.zeros((41, 2))
-        N[0:21, 1] = np.linspace(0, 120, 21)
-        N[20:42, 0] = np.linspace(0, 120, 21)
-        N[20:42, 1] = 120
+                # solution converged
+                if err < maxErr:
+                    # stability check
+                    eigVal = np.linalg.eigvals(K)
+                    numNegEig = np.sum(eigVal<1E-8)
+                    
+                    # get monitor dof
+                    inst.monVal = np.append(inst.monVal, np.array([[Lambda, inst.u[dofM], numNegEig]]), axis = 0)
 
-        E = np.zeros((40, 2), dtype="int")
-        E[:, 0] = np.linspace(2, 41, 40)
-        E[:, 1] = np.linspace(1, 40, 40)
+                    # print stability
+                    print(f"-------------------\nNeg. EigVal = {numNegEig:2d}\n*******************")
 
-        BC = np.array([[1, 1],
-                       [1, 2],
-                       [41, 1],
-                       [41, 2]])
+                    # stop equilibrium iteration
+                    break
+
+                # maximum number of iterations reached
+                if iter == maxIter-1:
+
+                    # error message
+                    print(f"*******************\n ITERATION FAILED!\n*******************")
+
+                    return inst
+
+                # solve and update displacements
+                inst.u += np.linalg.solve(K, -g)
+
+        return inst
+    
+    @classmethod
+    def arcL(cls, mesh, numInc: int, maxIter: int = 15, Lambda0: float = 0.1, maxErr: float = 1E-6):
+        """
+        Arc-Length Method with classical Riks constrain surface
+        mesh:    finite element discretization
+        numInc:  number of increments
+        maxIter: maximal number of interations (default = 15) 
+        Lambda0: inital load increment for arc-length (default = 0.1)
+        maxErr:  maximal relative error (default = 1E-6)
+        """
+
+        inst = cls()
+
+        # monitor dof
+        dofM = int(3*(mesh.monDOF[0] - 1) + mesh.monDOF[1] - 1)
+        inst.monVal = np.array([[0, 0, 0]])
+
+        # degrees of freedom
+        inst.numDOF = 3*mesh.N.shape[0]
+
+        # nodal displacements
+        inst.u = np.zeros(inst.numDOF)
+        # displacement increment in current load increment
+        DuC = np.zeros(inst.numDOF)
+        # displacement increment in previous load increment
+        DuO = np.zeros(inst.numDOF) 
+        du = np.zeros((inst.numDOF,2))  
+
+        # out-of-balance vector and external force vector
+        F = np.zeros((inst.numDOF,2))
+        for i in range(0, mesh.F.shape[0]):
+            F[int(3 * (mesh.F[i, 0] - 1) + mesh.F[i, 1] - 1),1] += mesh.F[i, 2]
+
+        # constrained dof
+        constrDOF = np.array([3 * (bc[0] - 1) + bc[1] - 1 for bc in mesh.BC])
+
+        # load factor
+        Lambda = 0
+        DLambda = 0
+
+        # *** START INCREMENTAL LOADING ***
+        for i in range(0,numInc):
+
+            print(f"Increment = {i:3d}")
+
+            # START NEWTON ITERATION
+            for iter in range(0,maxIter):
+
+                # global arrays
+                fin, K, _ = inst.assemble(mesh, inst.u, mesh.elType)
+
+                # out-of-balance vector
+                F[:,0] = -(fin - Lambda*F[:,1])
+
+                # apply boundary conditions
+                inst.applyBD(K, F, constrDOF = constrDOF)
+
+                # convergence check
+                if iter > 0:
+                    err = np.linalg.norm(F[:,0])/(np.linalg.norm(F[:,1]))
+                    print(f"{iter+1:3d}    {err:12.4e}")
+
+                    # solution converged
+                    if err < maxErr:
+                        # stability check
+                        eigVal = np.linalg.eigvals(K)
+                        numNegEig = np.sum(eigVal<1E-8)
+                        
+                        # get monitor dof
+                        inst.monVal = np.append(inst.monVal, np.array([[Lambda, inst.u[dofM], numNegEig]]), axis = 0)
+
+                        # print stability
+                        print(f"-------------------\nNegEig = {numNegEig:1d}")
+                        print(f"Lambda = {Lambda:5.4f}")
+                        print(f"*******************")
+
+                        #
+                        DuO = DuC
+
+                        # stop equilibrium iteration
+                        break
+
+                # maximum number of iterations reached
+                if iter == maxIter-1:
+
+                    # error message
+                    print(f"*******************\n ITERATION FAILED!\n*******************")
+
+                    return inst
+
+                # ***  ARC-LENGTH ***
+                # PREDICTOR
+                if iter == 0:
+                    # displacement increment
+                    DuC = np.linalg.solve(K,F[:,1])
+
+                    # first load increment
+                    if i == 0:
+                        # sign of increment load factor
+                        DLambdaSign = 1
+                        # determine arc-length
+                        arcL0 = np.linalg.norm(Lambda0 * DuC)
+                    # general load increment
+                    else:
+                        # sign of increment load factor
+                        DLambdaSign = np.sign(DuO.T @ DuC + DLambda)
+
+                        DuO[:] = 0
+                        DLamabda = 0
+
+                    # load increment according to arc-length
+                    DLambda0 = DLambdaSign * arcL0 / np.sqrt(DuC.T @ DuC + 1)
+                    Du0 = DLambda0 * DuC
+                    DuC = Du0
+
+                    # update displacements and load factor
+                    inst.u += Du0
+                    Lambda += DLambda0
+                    DLambda = DLambda0
+
+                # CORRECTOR
+                else:
         
-        EA = 7.2E6*6
-        EI = 7.2E6*2
-        GAq = 5/6*(7.2E6/(2*(1+0.3)))*6
+                    # displacements for g and fex
+                    U = np.linalg.solve(K, F)
+                
+                    # interative change of load factor
+                    dLambda = (-Du0.T @ U[:,0]) /(Du0.T @ U[:,1] + DLambda0)
 
-        F = np.array([[23, 2, -10e3]])
+                    # update
+                    Lambda += dLambda
+                    DLambda += dLambda
+                
+                    du = U[:,0] + dLambda*U[:,1]
+                    DuC += du
+                    inst.u += du
 
-        monitor_DOF = [23, 2]
+        return inst
 
-    if n == 5:
-        # Euler Stab
-        L = 5000
-        n = 20
-        beta = 0 / 180 * np.pi
-        N = np.zeros((n + 1, 2))
-        N[:, 0] = np.linspace(0, L * np.cos(beta), n + 1)
-        N[:, 1] = np.linspace(0, L * np.sin(beta), n + 1)
+    @classmethod
+    def linBuckling(cls, mesh, u:np.ndarray, numModes: int = 3):
+        """
+        Linearized Buckling Analysis
+        mesh:     finite element discretization
+        u:        displacements at reference point
+        numModes: number of modes (default = 3)
+        """
+        inst = cls()
 
-        E = np.zeros((n, 2), dtype="int")
-        E[:, 0] = np.linspace(2, n + 1, n)
-        E[:, 1] = np.linspace(1, n, n)
+        # degrees of freedom
+        inst.numDOF = 3*mesh.N.shape[0]
 
-        BC = np.array([[1, 1],
-                       [1, 2],
-                       [n+1, 2]])
+        # constrained dof
+        constrDOF = np.array([3 * (bc[0] - 1) + bc[1] - 1 for bc in mesh.BC])
+         # external force vector
+        fex = np.zeros(inst.numDOF, dtype="float")
+        for i in range(0, mesh.F.shape[0]):
+            fex[int(3 * (mesh.F[i, 0] - 1) + mesh.F[i, 1] - 1)] += mesh.F[i, 2]
 
-        b = 100
-        h = 100
-        EA = 210000 * b * h
-        EI = 210000 * b * h**3 / 12
-        GAq = 5 / 6 * 80760 * b * h
+        # assemble stiffness matrix at reference
+        _, K, _ = inst.assemble(mesh, u, mesh.elType)
 
-        F = np.array([[n + 1, 1, -100e3]])
+        # apply boundary conditions
+        inst.applyBD(K, fex, constrDOF = constrDOF)
 
-        monitor_DOF = [n + 1, 1]
+        # determine tangential displacement
+        ut = np.linalg.solve(K,fex)
 
-    if n == 6:
-        # shallow arch: Länge in m
-        R = 70.72
-        n = 30
-        phi0 = 2 * 16.427
-        phi = np.linspace(-16.427 / 180 * np.pi, 16.427 / 180 * np.pi, n + 1)
-        N = np.zeros((n + 1, 2))
-        N[:, 0] = R * np.sin(phi)
-        N[:, 1] = R * np.cos(phi)
+        # assemble stiffness matrix at reference
+        _, _, Kg = inst.assemble(mesh, u, mesh.elType)
 
-        E = np.zeros((n, 2), dtype="int")
-        E[:, 0] = np.linspace(2, n + 1, n)
-        E[:, 1] = np.linspace(1, n, n)
+        # apply boundary conditions
+        inst.applyBD(Kg, constrDOF = constrDOF)
 
-        BC = np.array([[1, 1],
-                       [1, 2],
-                       [n+1, 1],
-                       [n+1, 2]], dtype="int")
+        # solve generalized eigenvalue problem
+        eigVals, eigVec = eig(K, -Kg)
+
+        # remove eigenvalues close to -1 (boundary conditions)
+        mask = np.abs(eigVals.real + 1) > 1E-6
+        eigValsMod = eigVals[mask]
+        eigVecMod = eigVec[:,mask]
+
+        # sort eigenvalues
+        ind = np.argsort(np.abs(eigValsMod))[:numModes]
+        inst.LambdaCrit = eigValsMod[ind].real + 1
+        inst.buckModes = eigVecMod[:,ind]
+
+        # scaling of buckling modes
+        max_per_col = np.max(np.abs(inst.buckModes), axis=0)  
+        inst.buckModes = inst.buckModes / max_per_col
+
+        # print
+        print(f"LINEARIZED BUCKLING ANALYSIS\nCritical load factors:")
+        for val in inst.LambdaCrit:
+            print(f"{val:6.2f}")
+
+        return inst
+
+    
+    def assemble(self, mesh: GNLexamples, u:  np.ndarray, elem_func: Callable[[np.ndarray, float, float, float, float], tuple]):
+
+        # number of DOF
+        numDOF = mesh.N.shape[0] * 3
+
+        # intialize arrays
+        fin = np.zeros(numDOF)
+        K   = np.zeros((numDOF, numDOF))
+        Kg  = np.zeros((numDOF, numDOF))
+
+        for x in mesh.E:
+
+            # indices of nodes (python)
+            indN = x - 1
+
+            # indices of element nodal displacements
+            dofE = np.concatenate([3*indN[0]+ np.array([0,1,2]), 3*indN[1] + np.array([0,1,2])])
+
+            # element nodal displacements
+            ue = u[dofE]
+
+            # length of element
+            dx = mesh.N[indN[0], 0] - mesh.N[indN[1], 0]
+            dy = mesh.N[indN[0], 1] - mesh.N[indN[1], 1]
+            l = np.sqrt(dx**2 + dy**2)
+
+            # TRANSFORMATION MATRIX
+            alpha = np.arctan2(dy, dx)
+            T = np.eye(3)
+            T[0, 0], T[0, 1] =  np.cos(alpha), np.sin(alpha)
+            T[1, 0], T[1, 1] = -np.sin(alpha), np.cos(alpha)
+
+            # transform element nodal displacements
+            ue[0:3] = T @ ue[0:3]
+            ue[3:6] = T @ ue[3:6]
+
+            # element arrays
+            fine, ke, kge = elem_func(ue, mesh.sec.EA, mesh.sec.EI, mesh.sec.GAq, l)
+
+            # TRANSFORMATION:
+            # internal force vector
+            fine[0:3] = T.T @ fine[0:3]
+            fine[3:6] = T.T @ fine[3:6]
+
+            # element stiffness matrix
+            ke[np.ix_(range(0,3),range(0,3))] = T.T @ ke[np.ix_(range(0,3),range(0,3))] @ T
+            ke[np.ix_(range(0,3),range(3,6))] = T.T @ ke[np.ix_(range(0,3),range(3,6))] @ T
+            ke[np.ix_(range(3,6),range(0,3))] = T.T @ ke[np.ix_(range(3,6),range(0,3))] @ T
+            ke[np.ix_(range(3,6),range(3,6))] = T.T @ ke[np.ix_(range(3,6),range(3,6))] @ T
+
+            # element geometric stiffness matrix
+            kge[np.ix_(range(0,3),range(0,3))] = T.T @ kge[np.ix_(range(0,3),range(0,3))] @ T
+            kge[np.ix_(range(0,3),range(3,6))] = T.T @ kge[np.ix_(range(0,3),range(3,6))] @ T
+            kge[np.ix_(range(3,6),range(0,3))] = T.T @ kge[np.ix_(range(3,6),range(0,3))] @ T
+            kge[np.ix_(range(3,6),range(3,6))] = T.T @ kge[np.ix_(range(3,6),range(3,6))] @ T
+
+            # ASSEMBLING
+            # internal force vector
+            fin[dofE] += fine
+
+            # global stiffness matrix
+            K[np.ix_(dofE, dofE)] += ke
+
+            # global geometric stiffness matrix
+            Kg[np.ix_(dofE, dofE)] += kge
+
+        return fin, K, Kg
+
+    @staticmethod
+    def applyBD(*arrays: np.ndarray, constrDOF: np.ndarray):
+        """
+        Apply boundary conditions to one or more arrays.
         
-        b = 0.05
-        h = 0.20
-        EA = 210000e6 * b * h
-        EI = 210000e6 * b * h**3 / 12
-        GAq = 5 / 6 * 80760e6 * b * h
+        Parameters
+        ----------
+        *arrays : np.ndarray
+            One or more arrays (matrices/vectors) to modify in-place.
+        constrDOF : np.ndarray
+            List/array of constrained DOFs.
+        """
+        for A in arrays:
+            if A.ndim == 1:  # vector
+                A[constrDOF] = 0
 
-        F = np.array([[n / 2 + 1, 2, -10e3]])
+            elif A.ndim == 2:  # matrix
+                if A.shape[0] == A.shape[1]:  # square
+                    for dof in constrDOF:
+                        A[:, dof] = 0
+                        A[dof, :] = 0
+                        A[dof, dof] = 1
+                else:  # non-square
+                    for dof in constrDOF:
+                        A[dof, :] = 0
 
-        monitor_DOF = [n / 2 + 1, 2]
+    def plotDisplacement(self, mesh: GNLexamples, u: np.ndarray, scale: float = 1.0):
+        """
+        Plot deformed structure
+        mesh:  finite element discretization
+        u:     nodal displacements
+        scale: scaling factor of displacements (default = 1.0)
+        """
+        plt.plot(mesh.N [:,0], mesh.N[:, 1], 'k--')
+        plt.plot(mesh.N [:,0] + scale*u[0::3], mesh.N[:, 1] + scale*u[1::3], 'k-o', markerfacecolor = 'yellow', markeredgecolor='k', markersize = 5)
+        plt.axis('equal')
+        plt.xlabel('x')
+        plt.ylabel('y')
+        plt.grid(which = 'major', linestyle = ':')
+        plt.show()
 
-    if n == 7:
-        # shallow arch - radial pressure
-        R = 40
-        n = 30
-        phi0 = 20 / 180 * np.pi
-        phi = np.linspace(-phi0, phi0, n + 1)
-        N = np.zeros((n + 1, 2))
-        N[:, 0] = R * np.sin(phi)
-        N[:, 1] = R * np.cos(phi)
+    def plotMonitor(self):
+        """
+        plot load-displacement curve of monitor DOF
+        """
+        # *** MONITOR WINDOW ***
+        # Or just use original order
+        x = self.monVal[:, 1]
+        y = self.monVal[:, 0]
 
-        E = np.zeros((n, 2), dtype="int")
-        E[:, 0] = np.linspace(2, n + 1, n)
-        E[:, 1] = np.linspace(1, n, n)
+        # Plot blue line through all points
+        plt.plot(x, y, color="blue", linewidth=2)
 
-        BC = np.array([[1, 1],
-                       [1, 2],
-                       [n+1, 1],
-                       [n+1, 2]], dtype="int")
-        
-        b = 0.05
-        h = 0.20
-        EA = 210000e6 * b * h
-        EI = 210000e6 * b * h**3 / 12
-        GAq = 5 / 6 * 80760e6 * b * h
+        # Masks for coloring dots
+        green_mask = self.monVal[:, 2] == 0
+        red_mask = self.monVal[:, 2] > 0
 
-        F = np.zeros((2 * (n - 1), 3))
-        p0 = 1000
-        dphi = 2 * phi0 / n
-        e = 0
-        for i in range(2, n + 1):
-            F[e, :] = [i, 1, -R * dphi * p0 * np.sin(phi[i - 1])]
-            F[e + 1, :] = [i, 2, -R * dphi * p0 * np.cos(phi[i - 1])]
-            e += 2
+        # Plot dots with colors
+        plt.plot(self.monVal[green_mask, 1], self.monVal[green_mask, 0],
+                'o', markerfacecolor='green', markeredgecolor='black', label='stable')
 
-        monitor_DOF = [n / 2 + 1, 2]
+        plt.plot(self.monVal[red_mask, 1], self.monVal[red_mask, 0],
+                'o', markerfacecolor='red', markeredgecolor='black', label='unstable')
 
-    # shallow arch - point load
-    if n == 8:
-        R = 40
-        n = 70
-        phi0 = 20 / 180 * np.pi
-        phi = np.linspace(-phi0, phi0, n + 1)
-        N = np.zeros((n + 1, 2))
-        N[:, 0] = R * np.sin(phi)
-        N[:, 1] = R * np.cos(phi)
+        plt.grid(True)
+        plt.ylabel("load factor")
+        plt.xlabel("monitor DOF")
+        plt.legend()
+        plt.show()
 
-        E = np.zeros((n, 2), dtype="int")
-        E[:, 0] = np.linspace(2, n + 1, n)
-        E[:, 1] = np.linspace(1, n, n)
-
-        BC = np.array([[1, 1],
-                       [1, 2],
-                       [n+1, 1],
-                       [n+1, 2]], dtype="int")
-        
-        b = 0.05
-        h = 0.20
-        EA = 210000e6 * b * h
-        EI = 210000e6 * b * h**3 / 12
-        GAq = 5 / 6 * 80760e6 * b * h
-
-        F = np.array([[n / 2 + 1, 2, -100e3]])
-
-        monitor_DOF = [n / 2 + 1, 2]
-
-    return N, E, BC, F, EA, EI, GAq, monitor_DOF
-
-
-def plot_BucklingModes(N, u):
-    # --- Settings ---
-    scale = 1  # deformation magnification
-    mode_colors = ["b", "0.75", "0.85"]  # 1st: blue, 2nd: dark gray, 3rd: light gray
-    mode_labels = ["1st buckling mode", "2nd buckling mode", "3rd buckling mode"]
-    node_marker_sizes = [6, 4, 4]
-    node_fill_colors = ["yellow", "lightgray", "lightgray"]  # De-emphasize higher modes
-
-    # --- Undeformed coordinates ---
-    x_orig = N[:, 0]
-    y_orig = N[:, 1]
-
-    # --- Plot ---
-    plt.figure(figsize=(10, 4))
-
-    # Plot undeformed shape
-    plt.plot(x_orig, y_orig, "k--", label="Undeformed", linewidth=1)
-
-    # Plot each buckling mode
-    for i in range(min(3, u.shape[1])):
-        u_mode = u[:, i]
-        x_def = x_orig + scale * u_mode[0::3]
-        y_def = y_orig + scale * u_mode[1::3]
-
-        # Line for mode shape
-        plt.plot(x_def, y_def, color=mode_colors[i], label=mode_labels[i], linewidth=2)
-
-        # Nodes for mode shape
-        plt.plot(
-            x_def,
-            y_def,
-            "o",
-            markerfacecolor=node_fill_colors[i],
-            markeredgecolor=mode_colors[i],  # Match line color
-            markersize=node_marker_sizes[i],
-        )
-
-    # --- Final layout ---
-    # plt.grid(True)
-    plt.axis("equal")
-    plt.xlabel("X [mm]")
-    plt.ylabel("Y [mm]")
-    plt.title("Undeformed vs Buckling Mode Shapes")
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
-
-
-def plot_Deformation(N, u):
-    # --- Settings ---
-    scale = 1  # deformation magnification
-    mode_color = "b"
-    mode_label = "Deformed"
-    node_marker_size = 6
-    node_fill_color = "yellow"
-
-    # --- Undeformed coordinates ---
-    x_orig = N[:, 0]
-    y_orig = N[:, 1]
-
-    # --- Deformed coordinates ---
-    x_def = x_orig + scale * u[0::3]
-    y_def = y_orig + scale * u[1::3]
-
-    # --- Plot ---
-    plt.figure(figsize=(10, 4))
-
-    # Plot undeformed shape
-    plt.plot(x_orig, y_orig, "k--", label="Undeformed", linewidth=1)
-
-    # Plot deformed shape
-    plt.plot(x_def, y_def, color=mode_color, label=mode_label, linewidth=2)
-    plt.plot(
-        x_def,
-        y_def,
-        "o",
-        markerfacecolor=node_fill_color,
-        markeredgecolor=mode_color,
-        markersize=node_marker_size,
-    )
-
-    # --- Final layout ---
-    plt.axis("equal")
-    plt.xlabel("X")
-    plt.ylabel("Y")
-    plt.title("Undeformed vs Deformed Shape")
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
-
-
-def plot_monitorDOF(plot_monitor):
-    # *** MONITOR WINDOW ***
-    # Or just use original order
-    x = plot_monitor[:, 1]
-    y = plot_monitor[:, 0]
-
-    # Plot blue line through all points
-    plt.plot(x, y, color="blue", linewidth=2)
-
-    # Masks for coloring dots
-    green_mask = plot_monitor[:, 2] == 0
-    red_mask = plot_monitor[:, 2] > 0
-
-    # Plot dots with colors
-    plt.plot(plot_monitor[green_mask, 1], plot_monitor[green_mask, 0],
-            'o', markerfacecolor='green', markeredgecolor='black', label='stable')
-
-    plt.plot(plot_monitor[red_mask, 1], plot_monitor[red_mask, 0],
-            'o', markerfacecolor='red', markeredgecolor='black', label='unstable')
-
-    plt.grid(True)
-    plt.ylabel("load factor")
-    plt.xlabel("monitor DOF")
-    plt.legend()
-    plt.show()
-
-
-# examples:
-# 1 ... Dünne Blattfeder
-# 2 ... Deep arch
-# 3 ... Kragträger
-# 4 ... Einhüftiger Rahmen
-# 5 ... Euler Stab
-# 6 ... Shallow arch
-# 7 ... Shallow arch - radial pressure
-# 8 ... Shallow arch - point load
-N, E, BC, F, EA, EI, GAq, monitor_DOF = example(1)
 
 # get discretizatin of example
-# FEinput = GNLexamples.leafSpring(b = 0.05, h = 0.001, M = 2)
-mesh = GNLexamples.shallowArch(n = 20)
+#mesh = GNLexamples.leafSpring(b = 0.05, h = 0.001, M = 10, elType = B2D_LR)
+#mesh = GNLexamples.shallowArch(n = 20, F = 5.5E4)
+mesh = GNLexamples.deepArch(F = 1.2E3)
 # plot mesh
 mesh.plotMesh()
 
-sol = FEMsolve.LoadCon(mesh, 5)
+# nonlinear analysis
+sol = FEMsolve.LoadCon(mesh, numInc = 10)
+#sol = FEMsolve.arcL(mesh, numInc = 15, Lambda0 = 0.4)
+sol.plotMonitor()
+sol.plotDisplacement(mesh, sol.u)
 
-# *** ANALYSE TYPE ***
-# arc-length method (Risk's method)
-arc_Length = False
-intial_Load_Factor = 0.5
-# buckling
-lin_Buckling = False
-# imperfection
-imp = False
-scal_BM = 0.0005
-# number of load increments
-num_Inc = 20
-# element type --> pass actual function that returesn fin, k, kg
-elem_func = B2D_LR
-# stop incremental loading
-inc_loading = False
+# stability analysis
+stabAnalysis = FEMsolve.linBuckling(mesh, sol.u)
+stabAnalysis.plotDisplacement(mesh, stabAnalysis.buckModes[:,2], scale = 10)
 
-# # apply geometric imperfection
-# if imp:
-#     buckling_modes = np.load("bucklingModes.npy")
-#     N[:, 0] += scal_BM * buckling_modes[0::3, 0]
-#     N[:, 1] += scal_BM * buckling_modes[1::3, 0]
-
-# # *** CHARCTERISTIC VALUES AND PRELOCATE MEMORY ***
-# # number of nodes
-# numN = N.shape[0]
-# # number of DOF
-# numDOF = 3 * numN
-# # nodal displacements
-# u = np.zeros(numDOF)
-# # out-of-balance vector
-# g = np.zeros(numDOF)
-# # external force vector
-# fex = np.zeros(numDOF, dtype="float")
-# for i in range(0, F.shape[0]):
-#     fex[int(3 * (F[i, 0] - 1) + F[i, 1] - 1)] += F[i, 2]
-
-# # monitor DOF
-# dof_monitor = int(3 * (monitor_DOF[0] - 1) + monitor_DOF[1] - 1)
-# plot_monitor = np.zeros((num_Inc + 1, 3))
-# count_inc = int(1)
-
-# # load factor
-# load_factor = 0.0
-
-# if arc_Length:
-#     # arc-length method
-#     F = np.zeros((numDOF, 2))
-#     F[:, 1] = fex
-#     DL_fac = 0
-#     Du_old = np.zeros(numDOF)
-# else:
-#     # load control
-#     fac = np.arange(1 / num_Inc, 1 + 1 / num_Inc, 1 / num_Inc)
-
-# # START INCREMENTAL LOADING
-# for j in range(0, num_Inc):
-#     # print increment
-#     print("***")
-#     print(f"Increment:  {j:2.0f}")
-
-#     # START NEWTON ITERATION
-#     for k in range(0, 20):
-#         if arc_Length == False:
-#             load_factor = fac[j]
-
-#         # DIRECT STIFFNESS METHOD
-#         fin, K, Kg = assemble(N, E, elem_func, u, EA, EI, GAq)
-
-#         # OUT-OF-BALANCE VECTOR
-#         g = fin - load_factor * fex
-
-#         # APPLY BOUNDARY CONDITIONS
-#         constrDOF = 3 * (BC[:, 0] - 1) + BC[:, 1] - 1
-#         for i in constrDOF:
-#             g[i] = 0
-#             K[i, :], Kg[i, :] = 0, 0
-#             K[:, i], Kg[:, i] = 0, 0
-#             K[i, i], Kg[i, i] = 1, 1
-
-#         # determine and print relative error
-#         err = np.linalg.norm(g) / np.linalg.norm(fex)
-#         print(f"{k + 1:2d}     {err:.3e}")
-
-#         # CONVERGENCE CHECK
-#         if k > 0:
-#             if err < 1e-6:
-#                 # stability check
-#                 _, D, _ = ldl(K)
-#                 diag_Elements = np.diag(D)
-
-#                 # monitor DOF
-#                 plot_monitor[j+1,:] = [load_factor, u[dof_monitor], np.sum(diag_Elements < 1E-6) ]
-#                 count_inc += 1
-
-#                 # print load factor and number of negative diagonal entries
-#                 print(f"Load factor: {load_factor:4.3f}")
-#                 print(f"Negative diagonal: {plot_monitor[j + 1, 2]:2.0f}")
-
-#                 # stop iteration
-#                 break
-
-#         # SOLVE LINEARIZED SYSTEM
-#         if arc_Length:
-#             # ARC-LENGTH METHOD
-#             # Riks method
-#             if k == 0:
-#                 # Prediction
-#                 Du = np.linalg.solve(K, fex)
-
-#                 # sign of loading increment
-#                 if j == 0:
-#                     # first increment
-#                     lfac_sign = 1
-#                     # determine arc length
-#                     arc_Length = np.linalg.norm(intial_Load_Factor * Du)
-#                 else:
-#                     lfac_sign = np.sign(Du_old.T @ Du + DL_fac)
-#                     DL_fac = 0
-#                     Du_old[:] = 0
-
-#                 # determine load increment according to arc-length
-#                 DL_fac0 = lfac_sign * arc_Length / np.sqrt(Du.T @ Du + 1)
-#                 Du0 = DL_fac0 * Du
-
-#                 # update displacements and load factor
-#                 u += Du0
-#                 load_factor += DL_fac0
-
-#             else:
-#                 # correction
-#                 # displacements for g and fex
-#                 F[:, 0] = -g
-#                 du = np.linalg.solve(K, F)
-
-#                 # change of load factor according to constrained (plane - Riks method)
-#                 dl_fac = (-Du0.T @ du[:, 0]) / (Du0.T @ du[:, 1] + DL_fac0)
-
-#                 # update
-#                 load_factor += dl_fac
-#                 DL_fac += dl_fac
-#                 # displacements
-#                 u_inc = du[:, 0] + dl_fac * du[:, 1]
-#                 Du_old += u_inc
-#                 u += u_inc
-#         else:
-#             # LOAD CONTROLLED
-#             u += np.linalg.solve(K, -g)
-
-#     # reach maximum number of iterations
-#     if k == 19:
-#         inc_loading = True
-
-#     # stop incremental loading
-#     if inc_loading:
-#         break
-
-# # print computation end status
-# if inc_loading:
-#     plot_monitor = plot_monitor[:-2, :]
-#     print("***\n   Iteration does not converge!  \n***")
-# else:
-#     print("***\n   Computation completed sucessfully!  \n***")
-
-# # plot monitor DOF
-# plot_monitorDOF(plot_monitor)
-
-# # plot deformation
-# plot_Deformation(N, u)
-
-
-# # *** LINEARIZED BUCKLING ANALYSIS ***
-# if lin_Buckling:
-#     # Solve generalized eigenvalue problem: K u = λ (-Kg) u
-#     eigvals, eigvecs = eig(K, -Kg)
-
-#     # Scale each eigenvector so its max absolute entry is 1
-#     eigvecs_scaled = np.zeros_like(eigvecs)
-#     for i in range(eigvecs.shape[1]):
-#         vec = eigvecs[:, i]
-#         max_val = np.max(np.abs(vec))
-#         eigvecs_scaled[:, i] = vec / max_val
-
-#     # Take real parts
-#     eigvals = np.real(eigvals)
-#     eigvecs = np.real(eigvecs_scaled)
-
-#     # Define tolerances
-#     tol_near_neg1 = 1e-3  # Exclude eigenvalues near -1
-#     threshold_near_0 = 10  # Keep eigenvalues near 0
-
-#     # Filter:
-#     # - Near zero: |λ| < threshold
-#     # - Not near -1: |λ + 1| > tol
-#     near_zero_mask = (np.abs(eigvals) < threshold_near_0) & (np.abs(eigvals + 1.0) > tol_near_neg1)
-
-#     # Apply mask
-#     near_zero_vals = eigvals[near_zero_mask]
-#     near_zero_vecs = eigvecs_scaled[:, near_zero_mask]
-
-#     # Sort by proximity to zero
-#     sorted_indices = np.argsort(np.abs(near_zero_vals))
-#     critical_loads = near_zero_vals[sorted_indices]
-#     buckling_modes = near_zero_vecs[:, sorted_indices]
-
-#     # --- Print ---
-#     print("LINEARIZED BUCKLING ANALYSIS\n")
-#     print("Critical loads:")
-#     for val in critical_loads[:5]:
-#         print(f"  {val:10.4e}")
-
-#     # Get mode shape for smallest positive eigenvalue (≠ 1)
-#     smallest_val = critical_loads[0]
-
-#     x_coords = N[:, 0]
-#     y_coords = N[:, 1]
-
-#     # Bounding box size
-#     Lx = x_coords.max() - x_coords.min()
-#     Ly = y_coords.max() - y_coords.min()
-
-#     # Characteristic dimension (diagonal of bounding box) - scaling of buckling mode
-#     L_char = np.sqrt(Lx**2 + Ly**2)
-#     uMax = np.max(np.abs(buckling_modes[:, 0]))
-#     scal = L_char / 10 / uMax
-#     # buckling mode
-#     u[:] = 0
-#     u = buckling_modes[:, 0:3] * scal
-
-#     # save modes
-#     np.save("bucklingModes.npy", buckling_modes)
-
-#     # plot modes
-#     plot_BucklingModes(N, u)
+#mesh.imperfection(stabAnalysis.buckModes[:,0], scale = 0.01)
+#postBuckling = FEMsolve.arcL(mesh, numInc = 40, Lambda0 = 0.2)
+#postBuckling.plotMonitor()
+#postBuckling.plotDisplacement(mesh, postBuckling.u)
