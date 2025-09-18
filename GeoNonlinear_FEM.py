@@ -200,41 +200,44 @@ def B2D_SR(ue, EA, EI, GAq, l):
     wI = [5 / 9 * 0.5 * l, 8 / 9 * 0.5 * l, 5 / 9 * 0.5 * l]
 
     D = np.diag([EA, EI])
-
+    
+    print("-")
     for x, w in zip(xI, wI):
 
         # derivative of shape functions
         # first
-        dN1dx = 1 / l
-        dN2dx = 6 * x * (l - x) / l**3
-        dN3dx = -(-2 * l * x + 3 * x**2) / l**2
+        dN1dx =  1 / l
+        dN2dx = -6*x**2/l**3 + 6*x/l**2
+        dN3dx = -3*x**2/l**2 + 2*x/l
         dN4dx = -1 / l
-        dN5dx = -6 * x * (l - x) / l**3
-        dN6dx = -(l - x) * (l - 3 * x) / l**2
+        dN5dx =  6*x**2/l**3 - 6*x/l**2
+        dN6dx = -3*x**2/l**2 + 4*x/l - 1
         # second
-        dN2dxx = (6 * l - 12 * x) / l**3
-        dN3dxx = -(-2 * l + 6 * x) / l**2
-        dN5dxx = (12 * x - 6 * l) / l**3
-        dN6dxx = -(-4 * l + 6 * x) / l**2
+        dN2dxx = -12*x/l**3 + 6/l**2
+        dN3dxx = -6*x/l**2 + 2/l
+        dN5dxx =  12*x/l**3 - 6/l**2
+        dN6dxx = -6*x/l**2 + 4/l
 
         # strains
-        dudx = dN1dx * u1 + dN4dx * u2
-        dwdx = dN2dx * w1 + dN3dx * phi1 + dN5dx * w2 + dN6dx * phi2
+        dudx =  dN1dx * u1 + dN4dx * u2
+        dwdx =  dN2dx * w1 + dN3dx * phi1 + dN5dx * w2 + dN6dx * phi2
         dwdxx = dN2dxx * w1 + dN3dxx * phi1 + dN5dxx * w2 + dN6dxx * phi2
         #E0 = dudx + 0.5 * (dudx**2 + dwdx**2)
-        E0 = dudx + 0.5 * (dwdx**2)
-        Kb = dwdxx
+        E0 = dudx # + 0.5 * dwdx**2
+        Kb = -dwdxx
 
         # cross section forces
         N = EA * E0
         M = EI * Kb
         CSF = np.array([[N, M]])
+        print(N)
 
         # B-matrix
+        dwdx = 0
         #B = np.array([[(1+dudx)*dN1dx,  dwdx*dN2dx,   dwdx*dN3dx, (1+dudx)*dN4dx, dwdx*dN5dx, dwdx*dN6dx],
         #              [             0,      dN2dxx,       dN3dxx,              0,     dN5dxx,     dN6dxx]])
-        B = np.array([[(1)*dN1dx,  dwdx*dN2dx,   dwdx*dN3dx, (1)*dN4dx, dwdx*dN5dx, dwdx*dN6dx],
-                      [             0,      dN2dxx,       dN3dxx,              0,     dN5dxx,     dN6dxx]])
+        B = np.array([[         dN1dx,  dwdx*dN2dx,   dwdx*dN3dx,          dN4dx, dwdx*dN5dx, dwdx*dN6dx],
+                      [             0,      -dN2dxx,       -dN3dxx,              0,     -dN5dxx,     -dN6dxx]])
         
         # internal force vector
         fine += B.T @ CSF.T * w
@@ -242,6 +245,7 @@ def B2D_SR(ue, EA, EI, GAq, l):
         # material stiffness matrix
         kme += B.T @ D @ B * w
 
+        N = 0
         # geometric stiffness matrix
         # kge += N*np.array([[dN1dx*dN1dx,           0,           0, dN1dx*dN4dx,           0,           0],
         #                    [          0, dN2dx*dN2dx, dN2dx*dN3dx,           0, dN2dx*dN5dx, dN2dx*dN6dx],
@@ -305,7 +309,7 @@ class GNLexamples:
         # boundary conditions
         inst.BC = np.array([[1, 1], [1, 2], [1, 3]])
         # external force
-        inst.F = np.array([[n + 1, 3, M]])
+        inst.F = np.array([[n + 1, 2, M]])
         # monitor DOF
         inst.monDOF = [n + 1, 1]
         # section properties
@@ -367,9 +371,8 @@ class GNLexamples:
         """
         inst = cls()
         # deep arch
-        R = 100
-        phi0 = 215
-        phi = np.linspace(-17.5 / 180 * np.pi, (180 + 17.5) / 180 * np.pi, n + 1)
+        xx = 180 - phi0
+        phi = np.linspace(-xx / 180 * np.pi, (180 + xx) / 180 * np.pi, n + 1)
         inst.N = np.zeros((n + 1, 2))
         inst.N[:, 0] = R * np.cos(phi)
         inst.N[:, 1] = R * np.sin(phi)
@@ -849,21 +852,26 @@ class FEMsolve:
 
 
 # get discretizatin of example
-#mesh = GNLexamples.leafSpring(b = 0.05, h = 0.001, M = 10, elType = B2D_LR)
+mesh = GNLexamples.leafSpring(b = 0.05, h = 0.001, M = -0.1, n = 3, elType = B2D_SR)
 #mesh = GNLexamples.shallowArch(n = 20, F = 5.5E4)
-mesh = GNLexamples.deepArch(F = 1.2E3)
+#mesh = GNLexamples.deepArch(F = 0.1, n = 10, phi0 = 180)
+#mesh.elType = B2D_LR
 # plot mesh
 mesh.plotMesh()
 
 # nonlinear analysis
-sol = FEMsolve.LoadCon(mesh, numInc = 10)
+sol = FEMsolve.LoadCon(mesh, numInc = 1)
 #sol = FEMsolve.arcL(mesh, numInc = 15, Lambda0 = 0.4)
 sol.plotMonitor()
 sol.plotDisplacement(mesh, sol.u)
 
+print(sol.u[0::3])
+print(sol.u[1::3])
+print(sol.u[2::3])
+
 # stability analysis
-stabAnalysis = FEMsolve.linBuckling(mesh, sol.u)
-stabAnalysis.plotDisplacement(mesh, stabAnalysis.buckModes[:,2], scale = 10)
+#stabAnalysis = FEMsolve.linBuckling(mesh, sol.u)
+#stabAnalysis.plotDisplacement(mesh, stabAnalysis.buckModes[:,2], scale = 10)
 
 #mesh.imperfection(stabAnalysis.buckModes[:,0], scale = 0.01)
 #postBuckling = FEMsolve.arcL(mesh, numInc = 40, Lambda0 = 0.2)
