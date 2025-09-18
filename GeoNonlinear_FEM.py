@@ -263,6 +263,155 @@ def B2D_SR(ue, EA, EI, GAq, l):
     
     return fine.flatten(), kme+kge, kge
 
+def B2D_SRA(ue, EA, EI, GAq, l):
+
+    u1, w1, phi1 = ue[0], ue[1], ue[2]
+    u2, w2, phi2 = ue[3], ue[4], ue[5]
+
+    fine = np.zeros(6, dtype="float")
+    ke = np.zeros((6, 6), dtype="float")
+    kge = np.zeros((6, 6), dtype="float")
+
+    t1 = l ** 2
+    t2 = t1 ** 2
+    t4 = t1 * l
+    t5 = 0.1e1 / t4
+    t6 = w1 * t5
+    t8 = 0.1e1 / t1
+    t9 = phi1 * t8
+    t11 = w2 * t5
+    t13 = phi2 * t8
+    t15 = -6 * t6 - 3 * t9 + 6 * t11 - 3 * t13
+    t16 = t15 ** 2
+    t22 = 0.1e1 / l
+    t27 = phi2 * t22
+    t29 = 2 * phi1 * t22 + 6 * w1 * t8 - 6 * w2 * t8 + 4 * t27
+    t30 = t15 * t29
+    t35 = t29 ** 2
+    t37 = -t15 * phi2 + t35 / 2
+    t46 = phi2 ** 2
+    t48 = u1 * t22 - u2 * t22 + t46 / 2
+    t49 = t48 * EA
+    t50 = t16 * EA * t2 / 10 + t30 * EA * t4 / 4 + t37 * EA * t1 / 3 - t29 * phi2 * l * EA / 2 + t49
+    t51 = phi1 + phi2
+    t52 = 3 * l * t51
+    t53 = 6 * w1
+    t54 = 6 * w2
+    t55 = -t52 - t53 + t54
+    t57 = t16 * EA
+    t59 = t57 * t4 * t55 / 3
+    t60 = -t55 * l
+    t62 = phi1 + 2 * phi2
+    t66 = l * t62 + 3 * w1 - 3 * w2
+    t67 = t66 * l
+    t70 = t2 * t1
+    t71 = 0.1e1 / t70
+    t72 = t71 * (t60 + 2 * t67)
+    t75 = t71 * t55
+    t76 = t29 * EA
+    t77 = t15 * t76
+    t80 = -3 * t57 * t72 - 6 * t77 * t75
+    t81 = t2 ** 2
+    t85 = 2 * t66 * t1
+    t86 = phi2 * t4
+    t88 = t71 * (-t85 - t86)
+    t93 = t37 * EA
+    t96 = -3 * t57 * t88 - 6 * t77 * t72 - 6 * t93 * t75
+    t97 = t2 * t4
+    t106 = EA * phi2
+    t107 = t29 * t106
+    t110 = 6 * t107 * t75 - 3 * t57 * t13 - 6 * t93 * t72 - 6 * t77 * t88
+    t117 = t107 * t72 - t77 * t13 - t49 * t75 - t93 * t88
+    t118 = t2 * l
+    t124 = t107 * t88 - t93 * t13 - t49 * t72
+    t132 = EI * t5
+    t137 = 12 * t6 + 6 * t9 - 12 * t11 + 6 * t13
+    t140 = 6 * t76 * t46 * t8 + 12 * t137 * t132 - 6 * t49 * t88
+    t145 = EI * t8
+    t147 = 6 * t137 * t145
+    t150 = -6 * t49 * t13 - 12 * t29 * t132 - t147
+    t153 = EI * t22
+    t155 = -6 * t29 * t153
+    t160 = -0.3e1 / 0.2e1 * t52 - 9 * w1 + 9 * w2
+    t166 = 0.1e1 / t118
+    t167 = t166 * (t60 + 3 * t67)
+    t169 = t166 * t160
+    t177 = t166 * (-t85 - 0.3e1 / 0.2e1 * t86)
+    t219 = t137 * t153
+    t222 = -6 * t29 * t145
+    t226 = -t29 * EI
+    t244 = l * t51
+    t248 = 9 * t244 + 18 * w1 - 18 * w2
+    t253 = 3 * t244 + t53 - t54
+    t256 = t1 * t62
+    t259 = 2 * l * (-w1 + w2)
+    t262 = t166 * (-4 * t253 * l - 6 * t256 + 9 * t259)
+    t265 = t166 * t248
+    t273 = -2 * t256 + 3 * t259
+    t278 = t166 * (-4 * t273 * l + t253 * t1 + 3 * t86)
+    t290 = t166 * (-4 * phi2 * t2 + t273 * t1)
+    fine[0] = t50
+    fine[1] = -t59 + t81 * t80 / 8 + t97 * t96 / 7 + t70 * t110 / 6 + 0.6e1 / 0.5e1 * t118 * t117 + 0.3e1 / 0.2e1 * t2 * t124 + t4 * t140 / 3 + t1 * t150 / 2 - t155
+    fine[2] = -t57 * t2 * t160 / 9 + t81 * (-t57 * t167 - 2 * t77 * t169) / 8 + t97 * (-2 * t77 * t167 - 2 * t93 * t169 - t57 * t177) / 7 + t70 * (2 * t107 * t169 - 2 * t93 * t167 - 2 * t77 * t177 - t57 * t27) / 6 + 0.2e1 / 0.5e1 * t118 * (t107 * t167 - t49 * t169 - t93 * t177 - t77 * t27) + t2 * (t107 * t177 - t49 * t167 - t93 * t27) / 2 + t4 * (2 * t76 * t46 * t22 - 2 * t49 * t177 + t147) / 3 + t1 * (-2 * t49 * t27 - 2 * t219 + t222) / 2 - 2 * t226
+    fine[3] = -t50
+    fine[4] = t59 - t81 * t80 / 8 - t97 * t96 / 7 - t70 * t110 / 6 - 0.6e1 / 0.5e1 * t118 * t117 - 0.3e1 / 0.2e1 * t2 * t124 - t4 * t140 / 3 - t1 * t150 / 2 + t155
+    fine[5] = t57 * t2 * t248 / 18 + t81 * (t57 * t262 / 2 + t77 * t265) / 8 + t97 * (t57 * t278 / 2 + t77 * t262 + t93 * t265) / 7 + t70 * (t57 * t290 / 2 + t77 * t278 + t93 * t262 - t107 * t265) / 6 + t118 * (t16 * t106 / 2 + t77 * t290 + t93 * t278 - t107 * t262 + t49 * t265) / 5 + t2 * (t30 * t106 - t107 * t278 + t49 * t262 + t93 * t290) / 4 + t4 * (t37 * t106 - t107 * t290 + t49 * t278 + t147) / 3 + t1 * (-t29 * EA * t46 + t49 * t290 - 4 * t219 + t222) / 2 + l * t48 * t106 - 4 * t226
+
+    t1 = phi1 + phi2
+    t2 = w1 - w2
+    t3 = 4
+    t4 = 3
+    t5 = t4 * t2
+    t6 = 0.1e1 / l
+    t7 = t6 ** 2
+    t8 = t6 * t7
+    t9 = EA * t6
+    t10 = t9 / 30
+    t11 = t10 * ((-phi2 * t3 + phi1) * l - t5)
+    t3 = t10 * ((phi1 * t3 - phi2) * l + t5)
+    t5 = EA * (l * t1 + 12 * t2) * t7 / 10
+    t10 = phi2 ** 2
+    t12 = phi1 ** 2
+    t13 = t12 + t10
+    t14 = u1 - u2
+    t1 = t2 * t1
+    t15 = 54 * t1 + 84 * t14
+    t16 = t2 ** 2
+    t17 = 9 * t13 * l
+    t18 = 216 * t16
+    t19 = 840 * EI
+    t20 = 6 * phi1 * phi2
+    t10 = t4 * (t12 - t10)
+    t21 = -t10 + t20
+    t22 = 28 * t14
+    t23 = 72 * t2
+    t24 = t23 * phi1 + t22
+    t25 = 108 * t16
+    t26 = 1680 * EI
+    t10 = t10 + t20
+    t20 = t23 * phi2 + t22
+    t22 = 0.1e1 / 0.70e2
+    t23 = 0.1e1 / 0.280e3
+    t27 = t22 * (((t17 + t15) * l + t18) * EA + t19) * t8
+    t28 = t23 * ((t25 + l * (l * t21 + t24)) * EA + t26) * t7
+    t8 = t22 * (((-t17 - t15) * l - t18) * EA - t19) * t8
+    t15 = t23 * ((t25 + l * (l * t10 + t20)) * EA + t26) * t7
+    t17 = 36
+    t18 = 9 * phi1
+    t2 = 9 * t2 * (phi1 - phi2)
+    t19 = 56 * t14
+    t16 = 54 * t16
+    t22 = 0.1e1 / 0.420e3
+    t29 = 0.1e1 / 0.840e3
+    t1 = t29 * (t26 - EA * l * (-18 * t1 + 28 * t14 + (-12 * phi1 * phi2 + 9 * t13) * l)) * t6
+    t13 = t23 * ((-t25 + l * (-l * t21 - t24)) * EA - t26) * t7
+    t7 = t23 * ((-t25 + l * (-l * t10 - t20)) * EA - t26) * t7
+    ke = np.array([[t9,t5,t3,-t9,-t5,-t11],[t5,t27,t28,-t5,t8,t15],[t3,t28,t22 * ((t16 + l * (((phi2 * t4 - t18) * phi2 + t12 * t17) * l + t19 - t2)) * EA + t26) * t6,-t3,t13,t1],[-t9,-t5,-t3,t9,t5,t11],[-t5,t8,t13,t5,t27,t7],[-t11,t15,t1,t11,t7,t22 * ((t16 + l * (((phi2 * t17 - t18) * phi2 + t12 * t4) * l + t19 + t2)) * EA + t26) * t6]])
+
+    return fine, ke, kge
+
+
+
 # Section stiffness   
 class SectionProperty:
 
@@ -852,7 +1001,7 @@ class FEMsolve:
 
 
 # get discretizatin of example
-mesh = GNLexamples.leafSpring(b = 0.05, h = 0.001, M = -0.1, n = 3, elType = B2D_SR)
+mesh = GNLexamples.leafSpring(b = 0.05, h = 0.001, M = -0.1, n = 3, elType = B2D_SRA)
 #mesh = GNLexamples.shallowArch(n = 20, F = 5.5E4)
 #mesh = GNLexamples.deepArch(F = 0.1, n = 10, phi0 = 180)
 #mesh.elType = B2D_LR
