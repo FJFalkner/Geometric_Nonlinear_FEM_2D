@@ -6,6 +6,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.linalg import eig
 
+from ansys.mapdl.core import launch_mapdl
+
 def B2D_LR(ue, EA, EI, GAq, l):
     """
     2D beam element for large rotations
@@ -249,14 +251,26 @@ def B2D_SR(ue, EA, EI, GAq, l):
     
     return fine.flatten(), kme+kge, kge
 
-def B2D_SRA(ue, EA, EI, GAq, l):
+def B2D_SR_ML(ue, EA, EI, GAq, l):
+    """
+    2D beam element for moderate displacements and small rotations rotations
+        - Bernoulli theory
+        - 2 nodes
+        - shallow arch assumption
+        - membrane locking avoided by mean strain
 
-    u1, w1, phi1 = ue[0], ue[1], ue[2]
-    u2, w2, phi2 = ue[3], ue[4], ue[5]
+    ue              ... nodal displacements
+    EA, EI, GAq,    ... axial, bending and shear stiffness (not needed)
+    l               ... element length
+    """
 
-    fine = np.zeros(6, dtype="float")
-    ke = np.zeros((6, 6), dtype="float")
-    kge = np.zeros((6, 6), dtype="float")
+    # nodal displacements
+    u1, w1, phi1 = ue[0], ue[1], ue[2]  # right node
+    u2, w2, phi2 = ue[3], ue[4], ue[5]  # left node
+
+    fine = np.zeros(6, dtype="float")       # internal force vector
+    ke   = np.zeros((6, 6), dtype="float")  # element stiffness matrix
+    kge  = np.zeros((6, 6), dtype="float")  # geometric striffness matrix
 
     # internal force vector
     t1 = phi1 ** 2
@@ -339,6 +353,9 @@ def B2D_SRA(ue, EA, EI, GAq, l):
     t11 = t30 * (((-l * t23 - 6 * t25) * l - t26) * EA - t27) * t7
     t7 = t30 * (((-l * t16 - 6 * t15) * l - t26) * EA - t27) * t7
     ke = np.array([[t10,t9,t12,-t10,-t9,-t4],[t9,t31,t32,-t9,t8,t17],[t12,t32,t30 * (((((-t3 + t21) * phi2 + t13 * t19) * l - 2 * t2 * (6 * phi1 + phi2) + 2 * t18) * l + t29) * EA + t22) * t6,t5,t11,t1],[-t10,-t9,t5,t10,t9,t4],[-t9,t8,t11,t9,t31,t7],[-t4,t17,t1,t4,t7,t30 * (((((phi2 * t19 - t3) * phi2 + 3 * t13) * l - 2 * t2 * (phi1 + t28) + 2 * t18) * l + t29) * EA + t22) * t6]])
+
+    # geometric stiffness matrix
+    kge = np.array([[0,0,0,0,0,0],[0,0.2e1 / 0.25e2 * EA * ((phi1 ** 2 - phi1 * phi2 / 2 + phi2 ** 2) * l ** 2 + ((0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi1 + (0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi2 + 15 * u1 - 15 * u2) * l + 9 * (w1 - w2) ** 2) / l ** 3,EA * ((phi1 ** 2 - phi1 * phi2 / 2 + phi2 ** 2) * l ** 2 + ((0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi1 + (0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi2 + 15 * u1 - 15 * u2) * l + 9 * (w1 - w2) ** 2) / l ** 2 / 150,0,-0.2e1 / 0.25e2 * EA * ((phi1 ** 2 - phi1 * phi2 / 2 + phi2 ** 2) * l ** 2 + ((0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi1 + (0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi2 + 15 * u1 - 15 * u2) * l + 9 * (w1 - w2) ** 2) / l ** 3,EA * ((phi1 ** 2 - phi1 * phi2 / 2 + phi2 ** 2) * l ** 2 + ((0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi1 + (0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi2 + 15 * u1 - 15 * u2) * l + 9 * (w1 - w2) ** 2) / l ** 2 / 150],[0,EA * ((phi1 ** 2 - phi1 * phi2 / 2 + phi2 ** 2) * l ** 2 + ((0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi1 + (0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi2 + 15 * u1 - 15 * u2) * l + 9 * (w1 - w2) ** 2) / l ** 2 / 150,0.2e1 / 0.225e3 * EA * ((phi1 ** 2 - phi1 * phi2 / 2 + phi2 ** 2) * l ** 2 + ((0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi1 + (0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi2 + 15 * u1 - 15 * u2) * l + 9 * (w1 - w2) ** 2) / l,0,-EA * ((phi1 ** 2 - phi1 * phi2 / 2 + phi2 ** 2) * l ** 2 + ((0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi1 + (0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi2 + 15 * u1 - 15 * u2) * l + 9 * (w1 - w2) ** 2) / l ** 2 / 150,-EA * ((phi1 ** 2 - phi1 * phi2 / 2 + phi2 ** 2) * l ** 2 + ((0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi1 + (0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi2 + 15 * u1 - 15 * u2) * l + 9 * (w1 - w2) ** 2) / l / 450],[0,0,0,0,0,0],[0,-0.2e1 / 0.25e2 * EA * ((phi1 ** 2 - phi1 * phi2 / 2 + phi2 ** 2) * l ** 2 + ((0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi1 + (0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi2 + 15 * u1 - 15 * u2) * l + 9 * (w1 - w2) ** 2) / l ** 3,-EA * ((phi1 ** 2 - phi1 * phi2 / 2 + phi2 ** 2) * l ** 2 + ((0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi1 + (0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi2 + 15 * u1 - 15 * u2) * l + 9 * (w1 - w2) ** 2) / l ** 2 / 150,0,0.2e1 / 0.25e2 * EA * ((phi1 ** 2 - phi1 * phi2 / 2 + phi2 ** 2) * l ** 2 + ((0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi1 + (0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi2 + 15 * u1 - 15 * u2) * l + 9 * (w1 - w2) ** 2) / l ** 3,-EA * ((phi1 ** 2 - phi1 * phi2 / 2 + phi2 ** 2) * l ** 2 + ((0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi1 + (0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi2 + 15 * u1 - 15 * u2) * l + 9 * (w1 - w2) ** 2) / l ** 2 / 150],[0,EA * ((phi1 ** 2 - phi1 * phi2 / 2 + phi2 ** 2) * l ** 2 + ((0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi1 + (0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi2 + 15 * u1 - 15 * u2) * l + 9 * (w1 - w2) ** 2) / l ** 2 / 150,-EA * ((phi1 ** 2 - phi1 * phi2 / 2 + phi2 ** 2) * l ** 2 + ((0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi1 + (0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi2 + 15 * u1 - 15 * u2) * l + 9 * (w1 - w2) ** 2) / l / 450,0,-EA * ((phi1 ** 2 - phi1 * phi2 / 2 + phi2 ** 2) * l ** 2 + ((0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi1 + (0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi2 + 15 * u1 - 15 * u2) * l + 9 * (w1 - w2) ** 2) / l ** 2 / 150,0.2e1 / 0.225e3 * EA * ((phi1 ** 2 - phi1 * phi2 / 2 + phi2 ** 2) * l ** 2 + ((0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi1 + (0.3e1 / 0.2e1 * w1 - 0.3e1 / 0.2e1 * w2) * phi2 + 15 * u1 - 15 * u2) * l + 9 * (w1 - w2) ** 2) / l]])
 
     return fine, ke, kge
 
@@ -433,7 +450,7 @@ class GNLexamples:
         # section
         inst.sec = SectionProperty(b, h)
         # monitor DOF
-        inst.monDOF = [n / 2 + 1, 1]
+        inst.monDOF = [n / 2 + 1, 2]
         # element type
         inst.elType = elType
 
@@ -495,8 +512,160 @@ class GNLexamples:
 
     def imperfection(self, imp: np.ndarray, scale: float):
 
+        # modify x and y coordinates
         self.N[:,0] += scale*imp[0::3]
         self.N[:,1] += scale*imp[1::3]
+
+    def toAPDL(self):
+
+        # MAPDL starten
+        mapdl = launch_mapdl(nproc=1)
+
+        # Start mapdl and clear it.
+        mapdl.clear()
+        mapdl.verify()
+
+        # Enter verification example mode and the pre-processing routine.
+        mapdl.prep7()
+
+        # Element type: BEAM188.
+        mapdl.et(1, "188")
+        # 2D analysis (uy, ux and rotz)
+        # *** element y axis coincide with global -Z axis ***
+        mapdl.keyopt(1, 5, 1)   
+
+        # Material type: linear elastic
+        E = 1E10
+        nu = 5*self.sec.EA/(12*self.sec.GAq) - 1
+        mapdl.mp("EX", 1, E)                # Youngs modulus N/m^2
+        mapdl.mp("PRXY", 1, nu)             # Poisson ratio
+
+        h = np.sqrt(12*self.sec.EI/self.sec.EA)
+        b = self.sec.EA/E/h
+        #print(h, b, E, nu)
+
+        # cross section of beam
+        mapdl.sectype(1, "Beam", "RECT", "my_sec")  # rectangular cross section
+        mapdl.secdata(b, h)                         # b (in element y) and h (in element z) in m
+
+        # nodes
+        e = 1
+        for val in mesh.N:
+            mapdl.n(e, val[0], val[1], 0)
+            e += 1
+
+        # elements
+        for val in mesh.E:
+            mapdl.e(val[0], val[1])
+
+        # boundary conditions:
+        for val in mesh.BC:
+            if val[1] == 1:
+                mapdl.d(val[0], "UX")
+            elif val[1] == 2:
+                mapdl.d(val[0], "UY")
+            elif val[1] == 3:
+                mapdl.d(val[0], "ROTZ")
+            
+        # loads
+        for val in mesh.F:
+            if val[1] == 1:
+                mapdl.f(val[0], "FX", val[2])
+            elif val[1] == 2:
+                mapdl.f(val[0], "FY", val[2])
+            elif val[1] == 3:
+                mapdl.f(val[0], "MZ", -val[2])
+
+        mapdl.finish()
+        
+        return mapdl
+
+    def plotDisplacement(self, U, scale: float = 1.0, labels=None):
+        """
+        Plot deformed structure for one or several displacement vectors.
+        If multiple displacement states are given, highlight the node
+        with maximum displacement difference.
+
+        Parameters
+        ----------
+        U : np.ndarray or tuple/list of np.ndarray
+            Displacement vectors (length 3*nnodes each).
+        scale : float
+            Scaling factor for displacements.
+        labels : list of str, optional
+            Legend entries for each displacement vector.
+            If None, defaults to "u[0]", "u[1]", ...
+        """
+        import numpy as np
+        import matplotlib.pyplot as plt
+
+        # Normalize input to tuple
+        if isinstance(U, np.ndarray):
+            U = (U,)
+        elif isinstance(U, list):
+            U = tuple(U)
+
+        n_nodes = self.N.shape[0]
+
+        # Handle legend labels
+        if labels is None:
+            labels = [f"u[{i}]" for i in range(len(U))]
+        elif len(labels) != len(U):
+            raise ValueError("Length of labels must match number of displacement vectors in U.")
+
+        # Undeformed mesh
+        plt.plot(self.N[:, 0], self.N[:, 1], 'k--', label="undeformed")
+
+        # Colors
+        colors = ['yellow', 'cyan', 'orange', 'lime', 'red', 'violet', 'skyblue']
+
+        # Store deformed positions
+        deformed_positions = []
+
+        handles = []
+        for i, (u, lbl) in enumerate(zip(U, labels)):
+            x_def = self.N[:, 0] + scale * u[0::3]
+            y_def = self.N[:, 1] + scale * u[1::3]
+            deformed_positions.append(np.column_stack([x_def, y_def]))
+
+            fc = colors[i % len(colors)]
+            h, = plt.plot(
+                x_def, y_def, 'k-o',
+                markerfacecolor=fc,
+                markeredgecolor='k',
+                markersize=5,
+                label=lbl
+            )
+            handles.append(h)
+
+        # --- Highlight maximum displacement difference ---
+        if len(deformed_positions) > 1:
+            # Compare first vs. last state
+            diff = np.linalg.norm(deformed_positions[-1] - deformed_positions[0], axis=1)
+            i_max = np.argmax(diff)
+
+            p1 = deformed_positions[0][i_max]
+            p2 = deformed_positions[-1][i_max]
+
+            # Draw dotted line
+            plt.plot([p1[0], p2[0]], [p1[1], p2[1]], 'b:', linewidth=2)
+
+            # Annotate difference value
+            dval = diff[i_max]
+            plt.text(p2[0], p2[1], f"{dval:.4e}", color='b', fontsize=9,
+                    ha='left', va='bottom')
+
+        # Finish plot
+        plt.axis('equal')
+        plt.xlabel('x')
+        plt.ylabel('y')
+        plt.grid(which='major', linestyle=':')
+        plt.legend()
+        plt.show()
+
+        return tuple(handles)
+
+
 
 # Finite element solvers
 class FEMsolve:
@@ -934,24 +1103,50 @@ class FEMsolve:
 
 # get discretizatin of example
 Mend = 2*np.pi/0.5*2.1E11*0.05*0.001**3/12
-mesh = GNLexamples.leafSpring(b = 0.05, h = 0.001, M = 0.25*Mend, n = 10, elType = B2D_SRA)
-#mesh = GNLexamples.shallowArch(n = 20, F = 5.5E4)
+#mesh = GNLexamples.leafSpring(b = 0.05, h = 0.001, M = Mend, n = 10, elType = B2D_LR)
+mesh = GNLexamples.shallowArch(n = 40, F = 3.35E4, elType=B2D_LR)
 #mesh = GNLexamples.deepArch(F = 0.1, n = 10, phi0 = 180)
 #mesh.elType = B2D_LR
 # plot mesh
 mesh.plotMesh()
 
-# nonlinear analysis
 sol = FEMsolve.LoadCon(mesh, numInc = 10)
-#sol = FEMsolve.arcL(mesh, numInc = 15, Lambda0 = 0.4)
-sol.plotMonitor()
-sol.plotDisplacement(mesh, sol.u)
+
+ansys = mesh.toAPDL()
+
+ansys.run("/solu")
+ansys.antype("static")          # static analysis
+ansys.autots("off")             # automatic time stepping off
+ansys.nlgeom("on")              # activate geometric nonlinearities
+ansys.nsubst(10)                # number of increments (substeps)
+#ansys.outres("basic","all")     # store basic results at any increment
+out = ansys.solve()             # solve
+ansys.finish()
+
+ansys.post1()
+ansys.set("LAST")
+u_ansys = np.zeros(mesh.N.shape[0]*3, dtype = "float")
+u_ansys[0::3] = ansys.post_processing.nodal_displacement("X")
+u_ansys[1::3] = ansys.post_processing.nodal_displacement("Y")
+
+#print(u_ansys)
+
+ansys.exit()
+
+mesh.plotDisplacement(U=(u_ansys,sol.u), labels=["ansys", "fjFEM"])
+
+# nonlinear analysis
+#sol = FEMsolve.LoadCon(mesh, numInc = 20)
+#sol = FEMsolve.arcL(mesh, numInc = 25, Lambda0 = 0.4)
+#sol.plotMonitor()
+#sol.plotDisplacement(mesh, sol.u)
 
 # stability analysis
 #stabAnalysis = FEMsolve.linBuckling(mesh, sol.u)
-#stabAnalysis.plotDisplacement(mesh, stabAnalysis.buckModes[:,2], scale = 10)
+#stabAnalysis.plotDisplacement(mesh, stabAnalysis.buckModes[:,1], scale = 10)
 
-#mesh.imperfection(stabAnalysis.buckModes[:,0], scale = 0.01)
+# post-buckling analysis
+#mesh.imperfection(stabAnalysis.buckModes[:,1], scale = 0.001)
 #postBuckling = FEMsolve.arcL(mesh, numInc = 40, Lambda0 = 0.2)
 #postBuckling.plotMonitor()
 #postBuckling.plotDisplacement(mesh, postBuckling.u)
