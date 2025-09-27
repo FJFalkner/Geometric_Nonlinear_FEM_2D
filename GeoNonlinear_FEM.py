@@ -549,32 +549,29 @@ class GNLexamples:
         mapdl.secdata(b, h)                         # b (in element y) and h (in element z) in m
 
         # nodes
-        e = 1
-        for val in mesh.N:
-            mapdl.n(e, val[0], val[1], 0)
-            e += 1
+        for i, val in enumerate(mesh.N, start=1):
+            mapdl.n(i, val[0], val[1], 0)
 
         # elements
         for val in mesh.E:
             mapdl.e(val[0], val[1])
 
         # boundary conditions:
-        for val in mesh.BC:
-            if val[1] == 1:
-                mapdl.d(val[0], "UX")
-            elif val[1] == 2:
-                mapdl.d(val[0], "UY")
-            elif val[1] == 3:
-                mapdl.d(val[0], "ROTZ")
+        # Map BC codes to MAPDL DOF labels
+        bc_map = {1: "UX", 2: "UY", 3: "ROTZ",}
+
+        # Apply boundary conditions
+        for node, bc_code in mesh.BC:
+            dof = bc_map.get(bc_code)   # look up in dict
+            if dof:                     # only apply if valid
+                mapdl.d(node, dof)
             
         # loads
-        for val in mesh.F:
-            if val[1] == 1:
-                mapdl.f(val[0], "FX", val[2])
-            elif val[1] == 2:
-                mapdl.f(val[0], "FY", val[2])
-            elif val[1] == 3:
-                mapdl.f(val[0], "MZ", -val[2])
+        f_map = {1:("FX", 1), 2:("FY", 1), 3:("MZ", -1)}
+        for node, loadLabel, value in mesh.F:
+            if loadLabel in f_map:
+                fdof, sign = f_map[loadLabel]
+                mapdl.f(node, fdof, sign*value)
 
         mapdl.finish()
         
@@ -596,8 +593,6 @@ class GNLexamples:
             Legend entries for each displacement vector.
             If None, defaults to "u[0]", "u[1]", ...
         """
-        import numpy as np
-        import matplotlib.pyplot as plt
 
         # Normalize input to tuple
         if isinstance(U, np.ndarray):
@@ -617,7 +612,7 @@ class GNLexamples:
         plt.plot(self.N[:, 0], self.N[:, 1], 'k--', label="undeformed")
 
         # Colors
-        colors = ['yellow', 'cyan', 'orange', 'lime', 'red', 'violet', 'skyblue']
+        colors = ['yellow', 'skyblue', 'cyan', 'orange', 'lime', 'red', 'violet' ]
 
         # Store deformed positions
         deformed_positions = []
@@ -1102,18 +1097,17 @@ class FEMsolve:
 
 
 # get discretizatin of example
-Mend = 2*np.pi/0.5*2.1E11*0.05*0.001**3/12
-#mesh = GNLexamples.leafSpring(b = 0.05, h = 0.001, M = Mend, n = 10, elType = B2D_LR)
-mesh = GNLexamples.shallowArch(n = 40, F = 3.35E4, elType=B2D_LR)
+Mend = 1*np.pi/0.5*2.1E11*0.05*0.001**3/12
+mesh = GNLexamples.leafSpring(b = 0.05, h = 0.001, M = Mend, n = 10, elType = B2D_LR)
+#mesh = GNLexamples.shallowArch(n = 20, F = 3.35E4, elType=B2D_SR_ML)
 #mesh = GNLexamples.deepArch(F = 0.1, n = 10, phi0 = 180)
 #mesh.elType = B2D_LR
 # plot mesh
 mesh.plotMesh()
 
-sol = FEMsolve.LoadCon(mesh, numInc = 10)
+sol = FEMsolve.LoadCon(mesh, numInc = 20)
 
 ansys = mesh.toAPDL()
-
 ansys.run("/solu")
 ansys.antype("static")          # static analysis
 ansys.autots("off")             # automatic time stepping off
@@ -1133,7 +1127,7 @@ u_ansys[1::3] = ansys.post_processing.nodal_displacement("Y")
 
 ansys.exit()
 
-mesh.plotDisplacement(U=(u_ansys,sol.u), labels=["ansys", "fjFEM"])
+mesh.plotDisplacement(U=(u_ansys, sol.u), labels = ["ansys", "fjFEM"])
 
 # nonlinear analysis
 #sol = FEMsolve.LoadCon(mesh, numInc = 20)
