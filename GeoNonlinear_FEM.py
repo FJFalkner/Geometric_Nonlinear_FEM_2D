@@ -360,7 +360,6 @@ def B2D_SR_ML(ue, EA, EI, GAq, l):
     return fine, ke, kge
 
 
-
 # Section stiffness   
 class SectionProperty:
 
