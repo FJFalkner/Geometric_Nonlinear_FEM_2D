@@ -469,11 +469,11 @@ class GNLexamples:
         """
         inst = cls()
         # deep arch
-        xx = 180 - phi0
-        phi = np.linspace(-xx / 180 * np.pi, (180 + xx) / 180 * np.pi, n + 1)
+        xx = phi0/2
+        phi = np.linspace(-xx / 180 * np.pi, xx / 180 * np.pi, n + 1)
         inst.N = np.zeros((n + 1, 2))
-        inst.N[:, 0] = R * np.cos(phi)
-        inst.N[:, 1] = R * np.sin(phi)
+        inst.N[:, 0] = R * np.sin(phi)
+        inst.N[:, 1] = R * np.cos(phi)
 
         inst.E = np.zeros((n, 2), dtype=int)
         inst.E[:, 0] = np.linspace(2, n + 1, n)
@@ -482,7 +482,8 @@ class GNLexamples:
         inst.BC = np.array([[1, 1],
                             [1, 2],
                             [n+1, 1],
-                            [n+1, 2]], dtype=int)
+                            [n+1, 2],
+                            [n+1, 3]], dtype=int)
 
         inst.F = np.array([[n / 2 + 1, 2, -F]])
 
@@ -515,67 +516,6 @@ class GNLexamples:
         # modify x and y coordinates
         self.N[:,0] += scale*imp[0::3]
         self.N[:,1] += scale*imp[1::3]
-
-    def toAPDL(self):
-
-        # MAPDL starten
-        mapdl = launch_mapdl(nproc=1)
-
-        # Start mapdl and clear it.
-        mapdl.clear()
-        mapdl.verify()
-
-        # Enter verification example mode and the pre-processing routine.
-        mapdl.prep7()
-
-        # Element type: BEAM188.
-        mapdl.et(1, "188")
-        # 2D analysis (uy, ux and rotz)
-        # *** element y axis coincide with global -Z axis ***
-        mapdl.keyopt(1, 5, 1)   
-
-        # Material type: linear elastic
-        E = 1E10
-        nu = 5*self.sec.EA/(12*self.sec.GAq) - 1
-        mapdl.mp("EX", 1, E)                # Youngs modulus N/m^2
-        mapdl.mp("PRXY", 1, nu)             # Poisson ratio
-
-        h = np.sqrt(12*self.sec.EI/self.sec.EA)
-        b = self.sec.EA/E/h
-        #print(h, b, E, nu)
-
-        # cross section of beam
-        mapdl.sectype(1, "Beam", "RECT", "my_sec")  # rectangular cross section
-        mapdl.secdata(b, h)                         # b (in element y) and h (in element z) in m
-
-        # nodes
-        for i, val in enumerate(mesh.N, start=1):
-            mapdl.n(i, val[0], val[1], 0)
-
-        # elements
-        for val in mesh.E:
-            mapdl.e(val[0], val[1])
-
-        # boundary conditions:
-        # Map BC codes to MAPDL DOF labels
-        bc_map = {1: "UX", 2: "UY", 3: "ROTZ",}
-
-        # Apply boundary conditions
-        for node, bc_code in mesh.BC:
-            dof = bc_map.get(bc_code)   # look up in dict
-            if dof:                     # only apply if valid
-                mapdl.d(node, dof)
-            
-        # loads
-        f_map = {1:("FX", 1), 2:("FY", 1), 3:("MZ", -1)}
-        for node, loadLabel, value in mesh.F:
-            if loadLabel in f_map:
-                fdof, sign = f_map[loadLabel]
-                mapdl.f(node, fdof, sign*value)
-
-        mapdl.finish()
-        
-        return mapdl
 
     def plotDisplacement(self, U, scale: float = 1.0, labels=None):
         """
@@ -659,8 +599,6 @@ class GNLexamples:
         plt.show()
 
         return tuple(handles)
-
-
 
 # Finite element solvers
 class FEMsolve:
@@ -1095,39 +1033,120 @@ class FEMsolve:
         plt.legend()
         plt.show()
 
+# ANSYS
+class ANSYS:
 
+    def __init__(self):
+        self.numDOF: int = 0
+        self.u: Optional[np.ndarray] = None
+        self.monVal: Optional[np.ndarray] = None
+
+    @classmethod
+    def LoadCon(cls, mesh, numInc: int = 5, nlgeom: str = "on"):
+
+        inst = cls()
+
+        # pre-processing
+        ansys = inst.toANSYS(mesh)
+
+        # static structural analysis
+        ansys.run("/solu")
+        ansys.antype("static")              # static analysis
+        ansys.autots("off")                 # automatic time stepping off
+        ansys.nlgeom(nlgeom)                # activate geometric nonlinearities
+        ansys.nsubst(numInc)                # number of increments (substeps)
+        out = ansys.solve()                 # solve
+        ansys.finish()
+
+        # post-processing
+        ansys.post1()
+        ansys.set("LAST")
+        inst.u = np.zeros(mesh.N.shape[0]*3, dtype = "float")
+        inst.u[0::3] = ansys.post_processing.nodal_displacement("X")
+        inst.u[1::3] = ansys.post_processing.nodal_displacement("Y")
+
+        ansys.exit()
+
+        return inst
+
+    def toANSYS(self, mesh):
+
+        # MAPDL starten
+        mapdl = launch_mapdl(nproc=1)
+
+        # Start mapdl and clear it.
+        mapdl.clear()
+        mapdl.verify()
+
+        # Enter verification example mode and the pre-processing routine.
+        mapdl.prep7()
+
+        # Element type: BEAM188.
+        mapdl.et(1, "188")
+        # 2D analysis (uy, ux and rotz)
+        # *** element y axis coincide with global -Z axis ***
+        mapdl.keyopt(1, 5, 1)   
+
+        # Material type: linear elastic
+        E = 1E10
+        nu = 5*mesh.sec.EA/(12*mesh.sec.GAq) - 1
+        mapdl.mp("EX", 1, E)                # Youngs modulus N/m^2
+        mapdl.mp("PRXY", 1, nu)             # Poisson ratio
+
+        h = np.sqrt(12*mesh.sec.EI/mesh.sec.EA)
+        b = mesh.sec.EA/E/h
+        #print(h, b, E, nu)
+
+        # cross section of beam
+        mapdl.sectype(1, "Beam", "RECT", "my_sec")  # rectangular cross section
+        mapdl.secdata(b, h)                         # b (in element y) and h (in element z) in m
+
+        # nodes
+        for i, val in enumerate(mesh.N, start=1):
+            mapdl.n(i, val[0], val[1], 0)
+
+        # elements
+        for val in mesh.E:
+            mapdl.e(val[0], val[1])
+
+        # boundary conditions:
+        # Map BC codes to MAPDL DOF labels
+        bc_map = {1: "UX", 2: "UY", 3: "ROTZ",}
+
+        # Apply boundary conditions
+        for node, bc_code in mesh.BC:
+            dof = bc_map.get(bc_code)   # look up in dict
+            if dof:                     # only apply if valid
+                mapdl.d(node, dof)
+            
+        # loads
+        f_map = {1:("FX", 1), 2:("FY", 1), 3:("MZ", -1)}
+        for node, loadLabel, value in mesh.F:
+            if loadLabel in f_map:
+                fdof, sign = f_map[loadLabel]
+                mapdl.f(node, fdof, sign*value)
+
+        mapdl.finish()
+        
+        return mapdl
+    
 # get discretizatin of example
 Mend = 1*np.pi/0.5*2.1E11*0.05*0.001**3/12
-mesh = GNLexamples.leafSpring(b = 0.05, h = 0.001, M = Mend, n = 10, elType = B2D_LR)
+#mesh = GNLexamples.leafSpring(b = 0.05, h = 0.001, M = Mend, n = 10, elType = B2D_LR)
 #mesh = GNLexamples.shallowArch(n = 20, F = 3.35E4, elType=B2D_SR_ML)
-#mesh = GNLexamples.deepArch(F = 0.1, n = 10, phi0 = 180)
+mesh = GNLexamples.deepArch(F = 1000, n = 20, elType=B2D_LR)
 #mesh.elType = B2D_LR
 # plot mesh
 mesh.plotMesh()
 
-sol = FEMsolve.LoadCon(mesh, numInc = 20)
+# solve problem
+my_sol = FEMsolve.LoadCon(mesh, numInc = 20)
 
-ansys = mesh.toAPDL()
-ansys.run("/solu")
-ansys.antype("static")          # static analysis
-ansys.autots("off")             # automatic time stepping off
-ansys.nlgeom("on")              # activate geometric nonlinearities
-ansys.nsubst(10)                # number of increments (substeps)
-#ansys.outres("basic","all")     # store basic results at any increment
-out = ansys.solve()             # solve
-ansys.finish()
+# ANSYS
+ansys_sol = ANSYS.LoadCon(mesh)
 
-ansys.post1()
-ansys.set("LAST")
-u_ansys = np.zeros(mesh.N.shape[0]*3, dtype = "float")
-u_ansys[0::3] = ansys.post_processing.nodal_displacement("X")
-u_ansys[1::3] = ansys.post_processing.nodal_displacement("Y")
-
-#print(u_ansys)
-
-ansys.exit()
-
-mesh.plotDisplacement(U=(u_ansys, sol.u), labels = ["ansys", "fjFEM"])
+# plot displacements
+mesh.plotDisplacement(U=(ansys_sol.u, my_sol.u), labels = ["ansys", "fjFEM"])
 
 # nonlinear analysis
 #sol = FEMsolve.LoadCon(mesh, numInc = 20)
