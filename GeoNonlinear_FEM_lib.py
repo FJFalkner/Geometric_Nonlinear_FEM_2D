@@ -420,12 +420,13 @@ class GNLexamples:
         return inst
     
     @classmethod
-    def shallowArch(cls, R: float = 40, alpha: float = 20, F: float = 1E6, b: float = 0.01, h: float = 0.2, n: int = 40, elType: Callable = B2D_SR):
+    def shallowArch(cls, loadCase: str = "pressure", R: float = 40, alpha: float = 20, F: float = 1E6, b: float = 0.01, h: float = 0.2, n: int = 40, elType: Callable = B2D_SR_ML):
         """
         Construct a shallow arch under a point load at the center and pinned supports at the ends.
+        loadCase: "pressure" (default) or "force"
         R:      radius of the arch
-        alpha:  half of the opening angle in degrees
-        F:      magnitude of the vertical force
+        alpha:  half of the opening angle in rad
+        F:      magnitude of the loading
         b:      width of the cross section
         h:      height of the cross section
         n:      number of elements used
@@ -433,7 +434,7 @@ class GNLexamples:
         """
         inst = cls()
         # nodes
-        phi0 = alpha / 180 * np.pi
+        phi0 = alpha
         phi = np.linspace(-phi0, phi0, n + 1)
         inst.N = np.zeros((n + 1, 2))
         inst.N[:, 0] = R * np.sin(phi)
@@ -447,12 +448,24 @@ class GNLexamples:
                             [1, 2],
                             [n+1, 1],
                             [n+1, 2]], dtype="int")
-        # force at center
-        inst.F = np.array([[n / 2 + 1, 2, -F]])
+        # force
+        if loadCase == "force":
+            inst.F = np.array([[n / 2 + 1, 2, -F]])
+        # pressure
+        elif loadCase == "pressure":
+            inst.F = np.zeros((2*(n-1),3), dtype = float)
+            dp = F*R*2*phi0 / n
+            e = 0
+            for i, alpha in enumerate(phi[1:-1], start=2):
+                inst.F[e,:]   = [i, 1,  dp*np.sin(alpha)]
+                inst.F[e+1,:] = [i, 2, -dp*np.cos(alpha)]
+                e += 2
+        else:
+            raise ValueError("Unknown loadCase. Use 'pressure' or 'force'.")
+        
+        inst.monDOF = [n / 2 + 1, 2]
         # section
         inst.sec = SectionProperty(b, h)
-        # monitor DOF
-        inst.monDOF = [n / 2 + 1, 2]
         # element type
         inst.elType = elType
 
@@ -943,7 +956,7 @@ class FEMsolve:
         return inst
 
     @classmethod
-    def linBuckling(cls, mesh, u:np.ndarray, numModes: int = 3):
+    def linBuckling(cls, mesh, u:np.ndarray, numModes: int = 3,  pOut: bool = False):
         """
         Linearized Buckling Analysis
         mesh:     finite element discretization
@@ -995,9 +1008,10 @@ class FEMsolve:
         inst.buckModes = inst.buckModes / max_per_col
 
         # print
-        print(f"LINEARIZED BUCKLING ANALYSIS\nCritical load factors:")
-        for val in inst.LambdaCrit:
-            print(f"{val:6.2f}")
+        if pOut:
+            print(f"LINEARIZED BUCKLING ANALYSIS\nCritical load factors:")
+            for val in inst.LambdaCrit:
+                print(f"{val:6.2f}")
 
         return inst
 
@@ -1135,8 +1149,8 @@ class FEMsolve:
                 'o', markerfacecolor='red', markeredgecolor='black', label='unstable')
 
         plt.grid(True)
-        plt.ylabel("load factor")
-        plt.xlabel("monitor DOF")
+        plt.ylabel("$\lambda$")
+        plt.xlabel("$u_{mon}$")
         plt.legend()
         plt.show()
 
