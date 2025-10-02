@@ -581,7 +581,7 @@ class GNLexamples:
         self.N[:,0] += scale*imp[0::3]
         self.N[:,1] += scale*imp[1::3]
 
-    def plotDisplacement(self, U, scale: float = 1.0, labels=None):
+    def plotDisplacement(self, U, scale: float = 1.0, labels=None, title: str = None):
         """
         Plot deformed structure for one or several displacement vectors.
         If multiple displacement states are given, highlight the node
@@ -596,6 +596,8 @@ class GNLexamples:
         labels : list of str, optional
             Legend entries for each displacement vector.
             If None, defaults to "u[0]", "u[1]", ...
+        title : str, optional
+            Plot title. If None, no title is shown.
         """
 
         fig, ax = plt.subplots()
@@ -712,10 +714,15 @@ class GNLexamples:
         # Only show legend if multiple displacement vectors
         if len(U) > 1:
             ax.legend()
+
+        # Plot title if provided
+        if title is not None:
+            ax.set_title(title)
+
         plt.show()
 
         return tuple(handles)
-
+        
 # Finite element solvers
 class FEMsolve:
 
@@ -817,7 +824,7 @@ class FEMsolve:
         return inst
     
     @classmethod
-    def arcL(cls, mesh, numInc: int, maxIter: int = 15, Lambda0: float = 0.1, maxErr: float = 1E-6):
+    def arcL(cls, mesh, numInc: int, maxIter: int = 15, Lambda0: float = 0.1, maxErr: float = 1E-6, pOut: bool = False):
         """
         Arc-Length Method with classical Riks constrain surface
         mesh:    finite element discretization
@@ -825,6 +832,7 @@ class FEMsolve:
         maxIter: maximal number of interations (default = 15) 
         Lambda0: inital load increment for arc-length (default = 0.1)
         maxErr:  maximal relative error (default = 1E-6)
+        pOut:    print output to console (default: False)
         """
 
         inst = cls()
@@ -859,7 +867,9 @@ class FEMsolve:
         # *** START INCREMENTAL LOADING ***
         for i in range(0,numInc):
 
-            print(f"Increment = {i:3d}")
+            # print load step
+            if pOut:
+                print(f"Increment = {i:3d}")
 
             # START NEWTON ITERATION
             for iter in range(0,maxIter):
@@ -876,7 +886,8 @@ class FEMsolve:
                 # convergence check
                 if iter > 0:
                     err = np.linalg.norm(F[:,0])/(np.linalg.norm(F[:,1]))
-                    print(f"{iter+1:3d}    {err:12.4e}")
+                    if pOut:
+                        print(f"{iter+1:3d}    {err:12.4e}")
 
                     # solution converged
                     if err < maxErr:
@@ -888,9 +899,10 @@ class FEMsolve:
                         inst.monVal = np.append(inst.monVal, np.array([[Lambda, inst.u[dofM], numNegEig]]), axis = 0)
 
                         # print stability
-                        print(f"-------------------\nNegEig = {numNegEig:1d}")
-                        print(f"Lambda = {Lambda:5.4f}")
-                        print(f"*******************")
+                        if pOut:
+                            print(f"-------------------\nNegEig = {numNegEig:1d}")
+                            print(f"Lambda = {Lambda:5.4f}")
+                            print(f"*******************")
 
                         #
                         DuO = DuC
