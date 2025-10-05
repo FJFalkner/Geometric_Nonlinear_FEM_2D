@@ -273,58 +273,35 @@ def B2D_SR_ML(ue, EA, EI, GAq, l):
     kge  = np.zeros((6, 6), dtype="float")  # geometric striffness matrix
 
     # internal force vector
+    # Wiederkehrende Terme
+    U = (2*phi1**2 - phi1*phi2 + 2*phi2**2)*l**2 + ((3*w1 - 3*w2)*phi1 + (3*w1 - 3*w2)*phi2 + 30*u1 - 30*u2)*l + 18*(w1 - w2)**2
+    W1 = 12/l**3*w1 + 6/l**2*phi1 - 12/l**3*w2 + 6/l**2*phi2
+    W2 = -6/l**2*w1 - 2/l*phi1 + 6/l**2*w2 - 4/l*phi2
+
+    Phi = (3*phi1 + 3*phi2)*l + 36*(w1 - w2)
+    Psi = (4*phi1 - phi2)*l**2 + 3*l*(w1 - w2)
+    Xi  = (-phi1 + 4*phi2)*l**2 + 3*l*(w1 - w2)
+
+    # Kraftvektor
     fine = np.array([
-        # first entry
-        EA * ((2 * phi1**2 - phi1 * phi2 + 2 * phi2**2) * l**2
-            + ((3 * w1 - 3 * w2) * phi1 + (3 * w1 - 3 * w2) * phi2 + 30 * u1 - 30 * u2) * l
-            + 18 * (w1 - w2)**2) / (30 * l**2),
-        # second entry
-        4 * EI * (12 / l**3 * w1 + 6 / l**2 * phi1 - 12 / l**3 * w2 + 6 / l**2 * phi2)
-        + (-6 / l**2 * EI * (12 / l**3 * w1 + 6 / l**2 * phi1 - 12 / l**3 * w2 + 6 / l**2 * phi2)
-        + 12 / l**3 * EI * (-6 / l**2 * w1 - 2 / l * phi1 + 6 / l**2 * w2 - 4 / l * phi2)) * l**2 / 2
-        + ((3 * phi1 + 3 * phi2) * l + 36 * w1 - 36 * w2) / l**3 * EA
-        * ((2 * phi1**2 - phi1 * phi2 + 2 * phi2**2) * l**2
-            + ((3 * w1 - 3 * w2) * phi1 + (3 * w1 - 3 * w2) * phi2 + 30 * u1 - 30 * u2) * l
-            + 18 * (w1 - w2)**2) / 900
-        - 6 / l * EI * (-6 / l**2 * w1 - 2 / l * phi1 + 6 / l**2 * w2 - 4 / l * phi2),
-        # third entry
-        2 * l * EI * (12 / l**3 * w1 + 6 / l**2 * phi1 - 12 / l**3 * w2 + 6 / l**2 * phi2)
-        + (-2 / l * EI * (12 / l**3 * w1 + 6 / l**2 * phi1 - 12 / l**3 * w2 + 6 / l**2 * phi2)
-        + 6 / l**2 * EI * (-6 / l**2 * w1 - 2 / l * phi1 + 6 / l**2 * w2 - 4 / l * phi2)) * l**2 / 2
-        + ((4 * phi1 - phi2) * l**2 + (3 * w1 - 3 * w2) * l) / l**3 * EA
-        * ((2 * phi1**2 - phi1 * phi2 + 2 * phi2**2) * l**2
-            + ((3 * w1 - 3 * w2) * phi1 + (3 * w1 - 3 * w2) * phi2 + 30 * u1 - 30 * u2) * l
-            + 18 * (w1 - w2)**2) / 900
-        - 2 * EI * (-6 / l**2 * w1 - 2 / l * phi1 + 6 / l**2 * w2 - 4 / l * phi2),
-        # fourth entry
-        -EA * ((2 * phi1**2 - phi1 * phi2 + 2 * phi2**2) * l**2
-            + ((3 * w1 - 3 * w2) * phi1 + (3 * w1 - 3 * w2) * phi2 + 30 * u1 - 30 * u2) * l
-            + 18 * (w1 - w2)**2) / (30 * l**2),
-        # fifth entry
-        -4 * EI * (12 / l**3 * w1 + 6 / l**2 * phi1 - 12 / l**3 * w2 + 6 / l**2 * phi2)
-        + (6 / l**2 * EI * (12 / l**3 * w1 + 6 / l**2 * phi1 - 12 / l**3 * w2 + 6 / l**2 * phi2)
-        - 12 / l**3 * EI * (-6 / l**2 * w1 - 2 / l * phi1 + 6 / l**2 * w2 - 4 / l * phi2)) * l**2 / 2
-        + ((-3 * phi1 - 3 * phi2) * l - 36 * w1 + 36 * w2) / l**3 * EA
-        * ((2 * phi1**2 - phi1 * phi2 + 2 * phi2**2) * l**2
-            + ((3 * w1 - 3 * w2) * phi1 + (3 * w1 - 3 * w2) * phi2 + 30 * u1 - 30 * u2) * l
-            + 18 * (w1 - w2)**2) / 900
-        + 6 / l * EI * (-6 / l**2 * w1 - 2 / l * phi1 + 6 / l**2 * w2 - 4 / l * phi2),
-        # sixth entry
-        2 * l * EI * (12 / l**3 * w1 + 6 / l**2 * phi1 - 12 / l**3 * w2 + 6 / l**2 * phi2)
-        + (-4 / l * EI * (12 / l**3 * w1 + 6 / l**2 * phi1 - 12 / l**3 * w2 + 6 / l**2 * phi2)
-        + 6 / l**2 * EI * (-6 / l**2 * w1 - 2 / l * phi1 + 6 / l**2 * w2 - 4 / l * phi2)) * l**2 / 2
-        + ((-phi1 + 4 * phi2) * l**2 + (3 * w1 - 3 * w2) * l) / l**3 * EA
-        * ((2 * phi1**2 - phi1 * phi2 + 2 * phi2**2) * l**2
-            + ((3 * w1 - 3 * w2) * phi1 + (3 * w1 - 3 * w2) * phi2 + 30 * u1 - 30 * u2) * l
-            + 18 * (w1 - w2)**2) / 900
-        - 4 * EI * (-6 / l**2 * w1 - 2 / l * phi1 + 6 / l**2 * w2 - 4 / l * phi2)
+        EA * U / (30*l**2),
+
+        4*EI*W1 + (-6/l**2*EI*W1 + 12/l**3*EI*W2)*l**2/2 + EA*Phi*U/(900*l**3) - 6/l*EI*W2,
+
+        2*l*EI*W1 + (-2/l*EI*W1 + 6/l**2*EI*W2)*l**2/2 + EA*Psi*U/(900*l**3) - 2*EI*W2,
+
+        -EA*U/(30*l**2),
+
+        -4*EI*W1 + (6/l**2*EI*W1 - 12/l**3*EI*W2)*l**2/2 + EA*(-Phi)*U/(900*l**3) + 6/l*EI*W2,
+
+        2*l*EI*W1 + (-4/l*EI*W1 + 6/l**2*EI*W2)*l**2/2 + EA*Xi*U/(900*l**3) - 4*EI*W2
     ])
 
     # material stiffness matrix
     # Abkürzungen
-    Phi = (3*phi1 + 3*phi2)*l + 36*(w1 - w2)
-    Psi = (4*phi1 - phi2)*l**2 + 3*l*(w1 - w2)
-    Xi  = (-phi1 + 4*phi2)*l**2 + 3*l*(w1 - w2)
+    #Phi = (3*phi1 + 3*phi2)*l + 36*(w1 - w2)
+    #Psi = (4*phi1 - phi2)*l**2 + 3*l*(w1 - w2)
+    #Xi  = (-phi1 + 4*phi2)*l**2 + 3*l*(w1 - w2)
 
     # Steifigkeitsmatrix
     kme = np.array([
