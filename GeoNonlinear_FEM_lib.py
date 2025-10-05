@@ -321,73 +321,19 @@ def B2D_SR_ML(ue, EA, EI, GAq, l):
     ])
 
     # material stiffness matrix
+    # Abkürzungen
+    Phi = (3*phi1 + 3*phi2)*l + 36*(w1 - w2)
+    Psi = (4*phi1 - phi2)*l**2 + 3*l*(w1 - w2)
+    Xi  = (-phi1 + 4*phi2)*l**2 + 3*l*(w1 - w2)
+
+    # Steifigkeitsmatrix
     kme = np.array([
-        # first row
-        [
-            EA / l,
-            EA * ((3 * phi1 + 3 * phi2) * l + 36 * w1 - 36 * w2) / (30 * l**2),
-            EA * ((4 * phi1 - phi2) * l**2 + (3 * w1 - 3 * w2) * l) / (30 * l**2),
-            -EA / l,
-            EA * ((-3 * phi1 - 3 * phi2) * l - 36 * w1 + 36 * w2) / (30 * l**2),
-            EA * ((-phi1 + 4 * phi2) * l**2 + (3 * w1 - 3 * w2) * l) / (30 * l**2)
-        ],
-        # second row
-        [
-            EA * ((3 * phi1 + 3 * phi2) * l + 36 * w1 - 36 * w2) / (30 * l**2),
-            12 * EI / l**3 + EA * ((3 * phi1 + 3 * phi2) * l + 36 * w1 - 36 * w2)**2 / (900 * l**3),
-            6 * EI / l**2 + EA * ((3 * phi1 + 3 * phi2) * l + 36 * w1 - 36 * w2) *
-                ((4 * phi1 - phi2) * l**2 + (3 * w1 - 3 * w2) * l) / (900 * l**3),
-            -EA * ((3 * phi1 + 3 * phi2) * l + 36 * w1 - 36 * w2) / (30 * l**2),
-            -12 * EI / l**3 + EA * ((3 * phi1 + 3 * phi2) * l + 36 * w1 - 36 * w2) *
-                ((-3 * phi1 - 3 * phi2) * l - 36 * w1 + 36 * w2) / (900 * l**3),
-            6 * EI / l**2 + EA * ((3 * phi1 + 3 * phi2) * l + 36 * w1 - 36 * w2) *
-                ((-phi1 + 4 * phi2) * l**2 + (3 * w1 - 3 * w2) * l) / (900 * l**3)
-        ],
-        # third row
-        [
-            EA * ((4 * phi1 - phi2) * l**2 + (3 * w1 - 3 * w2) * l) / (30 * l**2),
-            6 * EI / l**2 + EA * ((3 * phi1 + 3 * phi2) * l + 36 * w1 - 36 * w2) *
-                ((4 * phi1 - phi2) * l**2 + (3 * w1 - 3 * w2) * l) / (900 * l**3),
-            4 * EI / l + EA * ((4 * phi1 - phi2) * l**2 + (3 * w1 - 3 * w2) * l)**2 / (900 * l**3),
-            -EA * ((4 * phi1 - phi2) * l**2 + (3 * w1 - 3 * w2) * l) / (30 * l**2),
-            -6 * EI / l**2 + EA * ((4 * phi1 - phi2) * l**2 + (3 * w1 - 3 * w2) * l) *
-                ((-3 * phi1 - 3 * phi2) * l - 36 * w1 + 36 * w2) / (900 * l**3),
-            2 * EI / l + EA * ((4 * phi1 - phi2) * l**2 + (3 * w1 - 3 * w2) * l) *
-                ((-phi1 + 4 * phi2) * l**2 + (3 * w1 - 3 * w2) * l) / (900 * l**3)
-        ],
-        # fourth row
-        [
-            -EA / l,
-            -EA * ((3 * phi1 + 3 * phi2) * l + 36 * w1 - 36 * w2) / (30 * l**2),
-            -EA * ((4 * phi1 - phi2) * l**2 + (3 * w1 - 3 * w2) * l) / (30 * l**2),
-            EA / l,
-            -EA * ((-3 * phi1 - 3 * phi2) * l - 36 * w1 + 36 * w2) / (30 * l**2),
-            -EA * ((-phi1 + 4 * phi2) * l**2 + (3 * w1 - 3 * w2) * l) / (30 * l**2)
-        ],
-        # fifth row
-        [
-            EA * ((-3 * phi1 - 3 * phi2) * l - 36 * w1 + 36 * w2) / (30 * l**2),
-            -12 * EI / l**3 + EA * ((3 * phi1 + 3 * phi2) * l + 36 * w1 - 36 * w2) *
-                ((-3 * phi1 - 3 * phi2) * l - 36 * w1 + 36 * w2) / (900 * l**3),
-            -6 * EI / l**2 + EA * ((4 * phi1 - phi2) * l**2 + (3 * w1 - 3 * w2) * l) *
-                ((-3 * phi1 - 3 * phi2) * l - 36 * w1 + 36 * w2) / (900 * l**3),
-            -EA * ((-3 * phi1 - 3 * phi2) * l - 36 * w1 + 36 * w2) / (30 * l**2),
-            12 * EI / l**3 + EA * ((-3 * phi1 - 3 * phi2) * l - 36 * w1 + 36 * w2)**2 / (900 * l**3),
-            -6 * EI / l**2 + EA * ((-3 * phi1 - 3 * phi2) * l - 36 * w1 + 36 * w2) *
-                ((-phi1 + 4 * phi2) * l**2 + (3 * w1 - 3 * w2) * l) / (900 * l**3)
-        ],
-        # sixth row
-        [
-            EA * ((-phi1 + 4 * phi2) * l**2 + (3 * w1 - 3 * w2) * l) / (30 * l**2),
-            6 * EI / l**2 + EA * ((3 * phi1 + 3 * phi2) * l + 36 * w1 - 36 * w2) *
-                ((-phi1 + 4 * phi2) * l**2 + (3 * w1 - 3 * w2) * l) / (900 * l**3),
-            2 * EI / l + EA * ((4 * phi1 - phi2) * l**2 + (3 * w1 - 3 * w2) * l) *
-                ((-phi1 + 4 * phi2) * l**2 + (3 * w1 - 3 * w2) * l) / (900 * l**3),
-            -EA * ((-phi1 + 4 * phi2) * l**2 + (3 * w1 - 3 * w2) * l) / (30 * l**2),
-            -6 * EI / l**2 + EA * ((-3 * phi1 - 3 * phi2) * l - 36 * w1 + 36 * w2) *
-                ((-phi1 + 4 * phi2) * l**2 + (3 * w1 - 3 * w2) * l) / (900 * l**3),
-            4 * EI / l + EA * ((-phi1 + 4 * phi2) * l**2 + (3 * w1 - 3 * w2) * l)**2 / (900 * l**3)
-        ]
+        [ EA/l,                 EA*Phi/(30*l**2),                       EA*Psi/(30*l**2),                      -EA/l,                 EA*(-Phi)/(30*l**2),                       EA*Xi/(30*l**2) ],
+        [ EA*Phi/(30*l**2),     12*EI/l**3 + EA*Phi**2/(900*l**3),      6*EI/l**2 + EA*Phi*Psi/(900*l**3),     -EA*Phi/(30*l**2),    -12*EI/l**3 + EA*Phi*(-Phi)/(900*l**3),     6*EI/l**2 + EA*Phi*Xi/(900*l**3) ],
+        [ EA*Psi/(30*l**2),     6*EI/l**2 + EA*Phi*Psi/(900*l**3),      4*EI/l + EA*Psi**2/(900*l**3),         -EA*Psi/(30*l**2),    -6*EI/l**2 + EA*Psi*(-Phi)/(900*l**3),      2*EI/l + EA*Psi*Xi/(900*l**3) ],
+        [ -EA/l,               -EA*Phi/(30*l**2),                      -EA*Psi/(30*l**2),                       EA/l,                 EA*Phi/(30*l**2),                         -EA*Xi/(30*l**2) ],
+        [ EA*(-Phi)/(30*l**2), -12*EI/l**3 + EA*(-Phi)*Phi/(900*l**3), -6*EI/l**2 + EA*(-Phi)*Psi/(900*l**3),  -EA*(-Phi)/(30*l**2),  12*EI/l**3 + EA*(-Phi)**2/(900*l**3),     -6*EI/l**2 + EA*(-Phi)*Xi/(900*l**3) ],
+        [ EA*Xi/(30*l**2),      6*EI/l**2 + EA*Phi*Xi/(900*l**3),       2*EI/l + EA*Psi*Xi/(900*l**3),         -EA*Xi/(30*l**2),     -6*EI/l**2 + EA*(-Phi)*Xi/(900*l**3),       4*EI/l + EA*Xi**2/(900*l**3) ]
     ])
 
     # mean axial strain
